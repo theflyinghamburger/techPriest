@@ -1,9 +1,6 @@
-#include <Arduino.h>
-#include <ESP32PWM.h>
 #include <ESP32Servo.h>
 #include <NeoPixelBus.h>
-#include "C:/Users/czars/Documents/Arduino/libraries/arduino-audio-tools/src/AudioTools.h"
-#include <ESP32Servo.h>
+
 // Digital IO pin connected to the button. This will be driven with a
 // pull-up resistor so the switch pulls the pin to ground momentarily.
 // On a high -> low transition the button press logic will execute.
@@ -83,11 +80,6 @@ TimerHandle_t timer;
 #define LED 21
  
 hw_timer_t *Timer0_Cfg = NULL;
-
-
-
-
-
 
 void avg_flt (u_int8_t channel, u_int8_t *index, u_int16_t *sensorReadings, u_int16_t *filteredOutput, u_int16_t *sum )
 {
@@ -390,16 +382,15 @@ void setup() {
      // Set up the LED pin as an output
   pinMode(LED_PIN, OUTPUT);
 
-  Timer0_Cfg = timerBegin(0, 80, true);
-  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
-  timerAlarmWrite(Timer0_Cfg, 2000, true); //2ms
-  timerAlarmEnable(Timer0_Cfg);
+  Timer0_Cfg = timerBegin(1000000);
+  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR);
+  timerAlarm(Timer0_Cfg, 2000, true, 0); //2ms
 
   strip1.Begin();
   strip1.Show();  // Initialize all pixels to 'off'
 
   // Allow allocation of all timers
-	ESP32PWM::allocateTimer(0);
+	//ESP32PWM::allocateTimer(0);
 	myservo.setPeriodHertz(50);    // standard 50 hz servo
 	myservo.attach(servoPin, 500, 3500); // attaches the servo on pin 18 to the servo object
 
