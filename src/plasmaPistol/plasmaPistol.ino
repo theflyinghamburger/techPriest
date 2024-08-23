@@ -19,6 +19,7 @@ FASTLED_USING_NAMESPACE
 #define NUM_LEDS 9
 #define BRIGHTNESS 120
 #define FRAMES_PER_SECOND 120
+#define SHOOT_INTERVAL_TIMING 500
 CRGB leds[NUM_LEDS];
 uint8_t breathBrightness = 100;
 
@@ -26,23 +27,41 @@ uint8_t breathBrightness = 100;
 #define BUTTON_PIN 6
 bool lastButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50;
+const unsigned long debounceDelay = 20;
+unsigned long shooting_time = 0;
 
 BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
 BLEDescriptor *pDescr;
 BLE2902 *pBLE2902;
+bool buttonPressed = false;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
 uint8_t gCurrentPatternNumber = 0;
 uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
+u_int8_t status = 0;
+volatile bool reading_base = false;
 
 typedef void (*SimplePatternList[])();
 
 unsigned long previousMillis = 0;
-const long interval = 1000; // 1 second
+const long interval = 8; // 8 miliseconds to show
 
+// Declare variables to store the button state and press time
+int buttonState = LOW;
+volatile bool ledState = false;
+u_int32_t prevMilis[8]; //prev mil for each status
+unsigned long pressTime = 0;
+unsigned long lastLoopTime = 0;
+
+#define SHORT_PRESS_DURATION 2000
+//#define LONG_PRESS_DURATION 1000
+#define DEBOUNCE_TIMING 20
+
+u_int16_t milSecCount = 0;
+u_int32_t secCount = 0;
+hw_timer_t *Timer0_Cfg = NULL;
 
 // PIN for BLE pairing
 #define PASSKEY 123456 // 6-digit PIN
@@ -105,12 +124,7 @@ void bleSecuritySetup(){
 
 void notifyPatternChange() {
   if (prev_gCurrentPatternNumber != gCurrentPatternNumber) {
-    /*
-    Serial.print("Pattern changed from ");
-    Serial.print(prev_gCurrentPatternNumber);
-    Serial.print(" to ");
-    Serial.println(gCurrentPatternNumber);
-    */
+
     intToPrint(gCurrentPatternNumber);
     pCharacteristic->setValue(&gCurrentPatternNumber, 1);
     pCharacteristic->notify();
@@ -121,47 +135,12 @@ void notifyPatternChange() {
 void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   Serial.begin(115200);
-
+  pinMode(LED_BUILTIN, OUTPUT);
+  timer_interupt_setup();
   // Set logging level
   esp_log_level_set("*", ESP_LOG_DEBUG);
 
-  // Initialize BLE
-  BLEDevice::init("Plasma_Pistol");
-  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
-  BLEDevice::setSecurityCallbacks(new SecurityCallback());
-
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-
-  // Create a BLE service
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-
-  // Create a BLE characteristic
-  pCharacteristic = pService->createCharacteristic(
-    CHARACTERISTIC_UUID,
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
-
-  pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
-
-  // Create descriptors for the characteristic
-  pDescr = new BLEDescriptor((uint16_t)0x2901);
-  pDescr->setValue("Plasma_Gun_State");
-  pCharacteristic->addDescriptor(pDescr);
-  
-  pBLE2902 = new BLE2902();
-  pBLE2902->setNotifications(true);
-  pCharacteristic->addDescriptor(pBLE2902);
-
-  // Start the service
-  pService->start();
-
-  // Start advertising
-  BLEAdvertising *pAdvertising = pServer->getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
-  BLEDevice::startAdvertising();
+  BLE_setup();
 
   // Setup BLE Security
   bleSecuritySetup();
@@ -175,39 +154,24 @@ void setup() {
   fill_solid(leds, NUM_LEDS, CRGB::Black); // start up
   notifyPatternChange();
   startup();
+  reading_base = !digitalRead(BUTTON_PIN);
 }
 
 SimplePatternList gPatterns = {idle, charging, overcharging, shooting};
 
 void loop() {
-  int reading = !digitalRead(BUTTON_PIN);
-  if (reading != lastButtonState) {
-    lastDebounceTime = millis();
-  }
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    if (reading != deviceConnected) {
-      deviceConnected = reading;
-      if (deviceConnected) {
-        gCurrentPatternNumber = 1; // Charging mode
-      } else {
-        unsigned long buttonHoldTime = millis() - lastDebounceTime;
-        gCurrentPatternNumber = (buttonHoldTime > 2000) ? 2 : 3; // Overcharging or Shooting
-        Serial.println(buttonHoldTime);
-      }
-      notifyPatternChange();
-      if (gCurrentPatternNumber == 3) { // Return to Idle after shooting
-        delay(1000); // Simulate Shooting
-        gCurrentPatternNumber = 0; // Idle
-        notifyPatternChange();
-      }
-    }
-  }
-  lastButtonState = reading;
+  
+
+
+
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     // Perform your action here
+    notifyPatternChange();
+    gPatterns[gCurrentPatternNumber]();
     FastLED.show();
+    
   }
   
   // Re-advertising after disconnection
@@ -289,3 +253,142 @@ void intToPrint(uint8_t i){
       break;
   }
 } 
+
+void buttonReader()
+{
+    // Get the current time
+  unsigned long currentTime = millis();
+
+  // Calculate the elapsed time since the last loop iteration
+  unsigned long elapsedTime = currentTime - lastLoopTime;
+  unsigned long elapsedShootingTime = currentTime - shooting_time;
+  int currentState = digitalRead(BUTTON_PIN);
+
+  // Debounce the button
+  if ((currentState != buttonState) && (elapsedTime >= DEBOUNCE_TIMING) && (elapsedShootingTime >= SHOOT_INTERVAL_TIMING ) ) {
+    buttonState = currentState;
+      // Update the last loop time
+  lastLoopTime = currentTime;
+  }
+
+
+  // Detect a short press
+  if (buttonState != reading_base && pressTime == 0) {
+    pressTime = millis();
+    gCurrentPatternNumber = 2; //charging
+  }
+
+  // Detect a long press
+  if ((buttonState != reading_base) && ((millis() - pressTime) >= SHORT_PRESS_DURATION) && (gCurrentPatternNumber == 2)) {
+
+    // Reset the press time
+    pressTime = 0;
+    gCurrentPatternNumber = 3; //overcharge
+  }
+
+  // Detect a short press release
+  if ((buttonState == reading_base && pressTime > 0) && ((gCurrentPatternNumber == 2) || (gCurrentPatternNumber == 3))) {
+    gCurrentPatternNumber = 4; //shooting
+    // Reset the press time
+    shooting_time = millis();
+    
+  }
+}
+
+void blinker()
+{
+    u_int32_t newMilis = millis();
+    if (newMilis - prevMilis[1] > 500)
+    {
+      prevMilis[1] = newMilis;
+      ledState = !ledState;  
+      digitalWrite(LED_BUILTIN, ledState);
+    }
+}
+
+// Define a callback function that will be called when the timer expires
+void IRAM_ATTR Timer0_ISR() 
+{
+  milSecCount+= 2;
+  status++;
+  if (status >= 8)
+  {
+    status = 0;
+  }
+  if (milSecCount >= 1000)
+  {
+    secCount++;
+    milSecCount = 0;
+  }
+  
+   switch (status) //2ms per status
+  {
+    case 0:
+      blinker();
+      break;
+    case 1:
+      buttonReader();
+      break;
+    case 2:
+      break;
+    case 3:
+       break;
+    case 4:
+      break;
+    case 5:
+      break;
+    case 6:
+      break;
+    case 7: 
+      break;
+    default:
+      break;
+  }
+    
+}
+
+void timer_interupt_setup(){
+  Timer0_Cfg = timerBegin(1000000);
+  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR);
+  timerAlarm(Timer0_Cfg, 2000, true, 0);
+}
+
+void BLE_setup(){
+    // Initialize BLE
+  BLEDevice::init("Plasma_Pistol");
+  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+  BLEDevice::setSecurityCallbacks(new SecurityCallback());
+
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create a BLE service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE characteristic
+  pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_NOTIFY
+  );
+
+  pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+
+  // Create descriptors for the characteristic
+  pDescr = new BLEDescriptor((uint16_t)0x2901);
+  pDescr->setValue("Plasma_Gun_State");
+  pCharacteristic->addDescriptor(pDescr);
+  
+  pBLE2902 = new BLE2902();
+  pBLE2902->setNotifications(true);
+  pCharacteristic->addDescriptor(pBLE2902);
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
+  BLEDevice::startAdvertising();
+}
