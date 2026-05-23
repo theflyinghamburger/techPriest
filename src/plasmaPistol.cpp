@@ -39,6 +39,9 @@ bool oldDeviceConnected = false;
 uint8_t gCurrentPatternNumber = 0;
 uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
 uint8_t overchargingTransitionStep = 0;
+int shootingStep = 0;
+unsigned long shootingLastTime = 0;
+const unsigned long shootingInterval = 20;
 
 typedef void (*SimplePatternList[])();
 
@@ -88,15 +91,15 @@ void overcharging() {
 }
 
 void shooting() {
-  // Execute shooting animation (reverse turn off LEDs)
-  for (int i = NUM_LEDS - 1; i >= 0; i--) {
-    leds[i] = CRGB::Black;
-    FastLED.show();
-    delay(20);
+  unsigned long now = millis();
+  if (now - shootingLastTime >= shootingInterval) {
+    shootingLastTime = now;
+    if (shootingStep >= 0 && shootingStep < NUM_LEDS) {
+      leds[NUM_LEDS - 1 - shootingStep] = CRGB::Black;
+      FastLED.show();
+      shootingStep++;
+    }
   }
-  // Ensure all LEDs are off
-  fill_solid(leds, NUM_LEDS, CRGB::Black);
-  FastLED.show();
 }
 
 void addGlitter(fract8 chanceOfGlitter) {
@@ -271,18 +274,11 @@ void loop() {
         } else {
           // Short press - go to shooting
           gCurrentPatternNumber = 3; // Shooting mode
+          shootingStep = 0;
+          shootingLastTime = millis();
           Serial.println("Short press - Shooting");
         }
         notifyPatternChange();
-
-        // Handle shooting state (non-blocking)
-        if (gCurrentPatternNumber == 3) {
-          // Shooting state - execute shooting animation
-          shooting();
-          // Return to idle after shooting
-          gCurrentPatternNumber = 0; // Idle mode
-          Serial.println("Shooting complete - Returning to Idle");
-        }
       }
       notifyPatternChange();
     }
@@ -294,6 +290,13 @@ void loop() {
     // Call the appropriate pattern function based on current state
     gPatterns[gCurrentPatternNumber]();
     FastLED.show();
+
+    if (gCurrentPatternNumber == 3 && shootingStep >= NUM_LEDS) {
+      fill_solid(leds, NUM_LEDS, CRGB::Black);
+      FastLED.show();
+      gCurrentPatternNumber = 0;
+      Serial.println("Shooting complete - Returning to Idle");
+    }
   }
 
   // Re-advertising after disconnection
