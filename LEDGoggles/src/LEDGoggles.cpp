@@ -298,7 +298,7 @@ void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wai
 
 void notifyModeChange()
 {
-  if (prevMode != mode) {
+  if (prevMode != mode && pCharacteristic) {
     Serial.print("Mode: ");
     Serial.println(mode);
     pCharacteristic->setValue(&mode, 1);
