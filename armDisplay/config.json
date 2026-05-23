@@ -1,0 +1,30 @@
+{
+  "button_labels": ["PURGE", "SCOUT", "EXORCISE", "RECALIBRATE"],
+  "button_colors": {
+    "bg": "black",
+    "fg": "lime",
+    "active_bg": "green",
+    "active_fg": "black",
+    "font": "Terminal",
+    "font_size": 9
+  },
+  "effects": {
+    "scanline_interval": 30,
+    "flicker_interval": 200,
+    "noise_interval": 100,
+    "noise_dots": 300
+  },
+  "ble": {
+    "target_name": "Plasma_Pistol",
+    "service_uuid": "09d2abe8-30ec-4519-86ff-ba0cbaf79160",
+    "char_uuid": "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107",
+    "scan_timeout": 10,
+    "reconnect_delay": 5,
+    "max_reconnect_attempts": 3
+  },
+  "display": {
+    "width": 480,
+    "height": 320,
+    "background_image": "background.jpeg"
+  }
+}
