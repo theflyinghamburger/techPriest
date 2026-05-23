@@ -46,6 +46,7 @@ class CRT_GUI(tk.Tk):
 
         # Start screen flicker and noise effects
         self.screen_flicker()
+        self.noise_item = None
         self.noise_overlay(width, height)
 
     def button_action(self, button_id):
@@ -108,18 +109,23 @@ class CRT_GUI(tk.Tk):
         # Create a random noise overlay
         noise = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(noise)
-        
+
         # Draw random white and gray dots to simulate noise
         for _ in range(300):  # Adjust number of dots for effect
             x = random.randint(0, width - 1)
             y = random.randint(0, height - 1)
             color = random.choice([(200, 200, 200, 60), (100, 100, 100, 60)])
             draw.point((x, y), fill=color)
-        
+
         # Convert the noise overlay to a Tkinter-compatible image and place it on the canvas
         self.noise_image = ImageTk.PhotoImage(noise)
-        self.canvas.create_image(0, 0, image=self.noise_image, anchor="nw", tags="noise")
-        
+
+        # Delete previous noise item to prevent memory leak
+        if self.noise_item is not None:
+            self.canvas.delete(self.noise_item)
+
+        self.noise_item = self.canvas.create_image(0, 0, image=self.noise_image, anchor="nw")
+
         # Refresh the noise overlay periodically for dynamic effect
         self.after(100, self.noise_overlay, width, height)
 
