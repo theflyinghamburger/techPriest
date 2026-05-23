@@ -1,0 +1,52 @@
+## Goal
+- Refactor and fix `armDisplay/armDisplay.py` GUI issues, implement BLE client for inter-prop communication, and add configuration/theming support.
+
+## Constraints & Preferences
+- One branch/PR per issue for clean history (adapted to bundle related GUI fixes in PR #13 for efficiency)
+- Preserve exact file paths and identifiers
+- Terse bullet format preferred
+
+## Progress
+### Done
+- Renamed `techPriest/` → `LEDGoggles/` (folder, source, docs). Commit `5453c80`.
+- Initialized `armDisplay/` project docs (`AGENTS.md`, `TODO.md`, `Pillow` dependency). Commit `9aabf8a`.
+- PR #12: `fix/noise-overlay-memory-leak` (track & delete canvas item).
+- PR #13: `fix/background-image-error-handling` (comprehensive refactor: missing image fallback, logging, width/height instance vars, graceful shutdown `Ctrl+Q`, vignette optimization, screen flicker photosafety fix, noise overlay memory leak fix). Commit `a504e84`.
+- PR #14: `feat/ble-client-implementation` (BLE client with `bleak`, device discovery for `Plasma_Pistol`, status label, background asyncio loop, graceful fallback).
+- PR #15: `feat/armdisplay-config-and-theming` (config.json, load_config with defaults merge, Tech Priest theming, single main_update loop, multi-prop BLE discovery, auto-reconnect, connected device status labels).
+
+### In Progress
+- None
+
+### Blocked
+- Receiving props need writable BLE characteristic (plasmaPistol currently notify-only)
+- `bleak` requires BlueZ 5.43+ — Pi OS version TBD
+
+## Key Decisions
+- Bundled remaining GUI fixes (logging, shutdown, vignette, flicker, noise) into PR #13 to reduce PR churn while maintaining isolated testing
+- Prioritized safety/stability fixes before new feature work (BLE client)
+- BLE client uses `bleak` with graceful ImportError fallback for non-BLE environments
+- Config file uses merge strategy: user values override defaults, nested dicts are merged
+- Single update loop uses `time.monotonic()` for interval tracking instead of separate `after()` callbacks
+
+## Next Steps
+- Test armDisplay on actual Pi hardware
+- Verify BLE connectivity with Plasma_Pistol, LEDGoggles, Servo_Skull
+- Potentially add writable BLE characteristic to receiving props
+
+## Critical Context
+- Repository: `https://github.com/theflyinghamburger/techPriest.git`
+- Base branch: `main`
+- `armDisplay/armDisplay.py`: tkinter + Pillow GUI for Pi touchscreen; uses single main_update() loop
+- `armDisplay/config.json`: user-editable config with defaults merge
+- PR #12, #13, #14, #15 pushed/open
+- BLE service `09d2abe8-30ec-4519-86ff-ba0cbaf79160`, char `102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107`
+- `BLE_Controller` class: `discover_all()`, `connect_all()`, `disconnect_all()`, `send_to_all()`, `reconnect_loop()` — asyncio in background daemon thread
+- Multi-prop support: discovers `Plasma_Pistol`, `LEDGoggles`, `Servo_Skull`
+
+## Relevant Files
+- `/home/czars/Documents/PlatformIO/Projects/plasmaPistol/armDisplay/armDisplay.py`: Main GUI script with BLE client, config, theming, single update loop
+- `/home/czars/Documents/PlatformIO/Projects/plasmaPistol/armDisplay/config.json`: User config for labels, colors, effects, BLE targets
+- `/home/czars/Documents/PlatformIO/Projects/plasmaPistol/armDisplay/AGENTS.md`: Project context, hardware specs, BLE implementation details
+- `/home/czars/Documents/PlatformIO/Projects/plasmaPistol/armDisplay/TODO.md`: Prioritized task tracker (updated with all completions)
+- `/home/czars/Documents/PlatformIO/Projects/plasmaPistol/README.md` & `AGENTS.md`: Root docs updated with `LEDGoggles` and `armDisplay` references
