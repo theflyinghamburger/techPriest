@@ -8,13 +8,13 @@
 
 ## Medium Priority
 - [x] Optimize vignette computation: 360 ellipse draws block the main thread at startup — pre-render to a static image or reduce resolution
-- [ ] Theme button labels to match Tech Priest aesthetic (e.g., "PURGE", "SCOUT", "EXorcise", "RECALIBRATE")
+- [x] Theme button labels to match Tech Priest aesthetic (e.g., "PURGE", "SCOUT", "EXORCISE", "RECALIBRATE")
 - [x] Add graceful shutdown: bind `<Escape>` or SIGINT to clean up `after()` loops and exit cleanly
 - [x] Store width/height as instance variables instead of passing them around
 
 ## Low Priority
-- [ ] Consider using `tkinter.after` with a single update loop instead of four independent timers for better frame synchronization
-- [ ] Add configuration file for button labels, colors, and effect timing
+- [x] Consider using `tkinter.after` with a single update loop instead of four independent timers for better frame synchronization
+- [x] Add configuration file for button labels, colors, and effect timing
 - [x] Add logging instead of `print()` in `button_action()`
 
 ## BLE Client (PR #14)
@@ -23,5 +23,14 @@
 - [x] Add device discovery by name (targets `Plasma_Pistol`)
 - [x] Add BLE status indicator label
 - [x] Run asyncio event loop in background thread
-- [ ] Add reconnection logic on disconnect
-- [ ] Add support for multiple target props (LEDGoggles, servoSkull)
+- [x] Add reconnection logic on disconnect
+- [x] Add support for multiple target props (LEDGoggles, servoSkull)
+
+## Config & Theming (PR #15)
+- [x] Add config.json for button labels, colors, effect timing, BLE targets
+- [x] Implement load_config() with defaults merge
+- [x] Tech Priest themed button labels
+- [x] Single main_update() loop replacing four independent timers
+- [x] BLE reconnect loop with configurable delay and max attempts
+- [x] Multi-prop discovery and connection
+- [x] Connected device status labels
