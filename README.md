@@ -56,6 +56,7 @@ Four LED patterns driven by `gCurrentPatternNumber`:
 - `NeoPixelBus@^2.7.15` — LEDGoggles
 - `adafruit/Adafruit SSD1306@^2.5.14` — servoSkull
 - `adafruit/Adafruit GFX Library@^1.11.9` — servoSkull
+- `Pillow` — armDisplay
 
 ## Gotchas
 
