@@ -219,7 +219,7 @@ void setup() {
   bleSecuritySetup();
 
   Serial.println("Waiting for a client connection to notify...");
-  delay(100); // 3 second delay for recovery
+  delay(100); // brief delay for BLE recovery
 
   // Initialize FastLED
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
