@@ -281,7 +281,6 @@ void loop() {
           Serial.println("Shooting complete - Returning to Idle");
         }
       }
-      notifyPatternChange();
     }
   }
 
