@@ -1,5 +1,5 @@
 {
-  "button_labels": ["PURGE", "SCOUT", "EXORCISE", "RECALIBRATE"],
+  "button_labels": ["CONQUEROR", "PROTECTOR", "AEGIS", "CLEANSE"],
   "button_colors": {
     "bg": "black",
     "fg": "lime",

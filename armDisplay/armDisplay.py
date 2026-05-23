@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
-    "button_labels": ["PURGE", "SCOUT", "EXORCISE", "RECALIBRATE"],
+    "button_labels": ["CONQUEROR", "PROTECTOR", "AEGIS", "CLEANSE"],
     "button_colors": {
         "bg": "black",
         "fg": "lime",
