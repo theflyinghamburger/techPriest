@@ -126,6 +126,7 @@ u_int8_t pos = 0;
 
 
 hw_timer_t *Timer0_Cfg = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Forward declarations
 void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool bounce);
@@ -180,7 +181,10 @@ void servoMove()
   if ((servoNowTime - servoMilis) >= 15)
   {
     servoMilis = servoNowTime;
-    myservo.write(pos);
+    portENTER_CRITICAL(&timerMux);
+    uint8_t cp = pos;
+    portEXIT_CRITICAL(&timerMux);
+    myservo.write(cp);
   }
 }
 
@@ -385,8 +389,9 @@ void armPos(u_int16_t * filteredADC, u_int32_t wait)
   }
 }
 // Define a callback function that will be called when the timer expires
-void IRAM_ATTR Timer0_ISR() 
+void IRAM_ATTR Timer0_ISR()
 {
+  portENTER_CRITICAL_ISR(&timerMux);
   milSecCount+= 2;
   status++;
   if (status >= 8)
@@ -398,7 +403,7 @@ void IRAM_ATTR Timer0_ISR()
     secCount++;
     milSecCount = 0;
   }
-  
+
    switch (status) //2ms per status
   {
     case 0:
@@ -417,11 +422,12 @@ void IRAM_ATTR Timer0_ISR()
       break;
     case 6:
       break;
-    case 7: 
+    case 7:
       break;
     default:
       break;
   }
+  portEXIT_CRITICAL_ISR(&timerMux);
     
 }
 
@@ -467,9 +473,12 @@ void loop() {
 
   // Process BLE command
   if (bleCommandPending) {
+    portENTER_CRITICAL(&timerMux);
+    uint8_t cmd = bleCommand;
     bleCommandPending = false;
-    if (bleCommand >= 0 && bleCommand <= 5) {
-      mode = bleCommand;
+    portEXIT_CRITICAL(&timerMux);
+    if (cmd >= 0 && cmd <= 5) {
+      mode = cmd;
       notifyModeChange();
     }
   }
