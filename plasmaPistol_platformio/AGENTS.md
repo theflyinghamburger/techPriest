@@ -49,7 +49,10 @@ Four LED patterns driven by a single `gCurrentPatternNumber` index:
 
 ## Gotchas
 
-- `shooting()` uses `delay()` in a loop — it blocks the event loop during the animation
-- The `loop()` fires patterns at 1 Hz (`interval = 1000` ms), not at `FRAMES_PER_SECOND`
-- `SecurityCallback::onPassKeyRequest()` returns `000000` regardless of `PASSKEY` — the static passkey is set via `esp_ble_gap_set_security_param` instead
+- `startup()` uses `delay(200)` in a loop — blocks during boot animation
+- `shooting()` is non-blocking — uses `millis()` with `shootingInterval` (20ms steps)
+- Main loop frame rate is `1000 / FRAMES_PER_SECOND` ≈ 8ms (~120 fps)
 - `breathBrightness` in `idle()` clamps at 100–254, not the full 0–255 range
+- `SecurityCallback::onPassKeyRequest()` returns `PASSKEY` (123456); the static passkey is also registered via `esp_ble_gap_set_security_param`
+- `onAuthenticationComplete()` guards `pServer` with null check before calling `removePeerDevice()`
+- Advertising restarts only on auth success; failure path removes peer device
