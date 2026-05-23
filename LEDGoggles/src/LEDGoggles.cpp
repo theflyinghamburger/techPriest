@@ -1,19 +1,12 @@
 #include <ESP32Servo.h>
 #include <NeoPixelBus.h>
-
-// Digital IO pin connected to the button. This will be driven with a
-// pull-up resistor so the switch pulls the pin to ground momentarily.
-// On a high -> low transition the button press logic will execute.
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+#include <BLESecurity.h>
+#include <BLE2902.h>
 
 #define PIXEL_COUNT 44  // Number of NeoPixels
-#define SHORT_PRESS_DURATION 250
-#define LONG_PRESS_DURATION 1000
-#define DEBOUNCE_TIMING 20
-
-// Declare variables to store the button state and press time
-int buttonState = LOW;
-unsigned long pressTime = 0;
-unsigned long lastLoopTime = 0;
 
 // Define the LED pin
 #define LED_PIN 2
@@ -39,9 +32,68 @@ Servo myservo;  // create servo object to control a servo
 NeoPixelBus<NeoGrbFeature, NeoEsp32I2s1X8Ws2812xMethod> strip1(PIXEL_COUNT, PIXEL_PIN); // note: modern WS2812 with letter like WS2812b
 
 boolean oldState = HIGH;
-uint8_t     mode     = 0;    // Currently-active animation mode, 0-9
+uint8_t     mode     = 4;    // Currently-active animation mode, 0-5 (default: spinning wheels red)
 
- 
+// BLE configuration (shared UUIDs across props)
+#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+#define PASSKEY 123456
+
+BLEServer *pServer = nullptr;
+BLECharacteristic *pCharacteristic = nullptr;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+uint8_t bleCommand = 0;
+bool bleCommandPending = false;
+uint8_t prevMode = 255;
+
+// BLE write callback — receives mode commands from armDisplay
+class GogglesWriteCallback : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pChr) {
+    if (pChr->getLength() >= 1) {
+      bleCommand = pChr->getData()[0];
+      bleCommandPending = true;
+      Serial.print("BLE command received: ");
+      Serial.println(bleCommand);
+    }
+  }
+};
+
+class SecurityCallback : public BLESecurityCallbacks {
+  uint32_t onPassKeyRequest() {
+    return PASSKEY;
+  }
+  void onPassKeyNotify(uint32_t pass_key) {}
+  bool onConfirmPIN(uint32_t pass_key) {
+    return true;
+  }
+  bool onSecurityRequest() {
+    return true;
+  }
+  void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
+    if (cmpl.success) {
+      Serial.println("  - BLE auth success");
+      deviceConnected = true;
+      BLEDevice::startAdvertising();
+    } else {
+      Serial.println("  - BLE auth failure");
+      if (pServer) {
+        pServer->removePeerDevice(pServer->getConnId(), true);
+      }
+    }
+  }
+};
+
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pSrv) {
+    deviceConnected = true;
+    Serial.println("BLE device connected");
+  }
+  void onDisconnect(BLEServer* pSrv) {
+    deviceConnected = false;
+    Serial.println("BLE device disconnected");
+  }
+};
 
 // Create an array to store the sensor readings
 u_int16_t xReadings[FILTER_ORDER];
@@ -71,8 +123,7 @@ u_int8_t servoBounce = 0;
 u_int8_t offset = 0;
 u_int8_t pos = 10;
 
-bool ledSwitch = false;
-bool servoSwitch = false;
+
 
 
 // Create a timer object
@@ -167,15 +218,7 @@ void servoMove()
 void lighting()
 {
 
-  // Check if state changed from high to low (button press).
-  if(ledSwitch) {
-      if(++mode > 5) mode = 0; 
-      clearLED();
-      ledSwitch = false;
-      prevLEDCount = 0;
-      }       
-      mode = 4;              // Advance to next mode, wrap around after #8
-  switch(mode) {           // Start the new animation...
+   switch(mode) {           // Start the new animation...
     case 0:
       colorWipe( 0,   0,   0, 50, true);    // Black/off
       break;
@@ -275,49 +318,76 @@ void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wai
   }
 }
 
-void buttonReader()
+void notifyModeChange()
 {
-    // Get the current time
-  unsigned long currentTime = millis();
-
-  // Calculate the elapsed time since the last loop iteration
-  unsigned long elapsedTime = currentTime - lastLoopTime;
-
-
-
-  int currentState = digitalRead(swADC);
-
-  // Debounce the button
-  if (currentState != buttonState && elapsedTime >= DEBOUNCE_TIMING) {
-    buttonState = currentState;
-      // Update the last loop time
-  lastLoopTime = currentTime;
-  }
-
-
-  // Detect a short press
-  if (buttonState == LOW && pressTime == 0) {
-    pressTime = millis();
-  }
-
-  // Detect a long press
-  if ((buttonState == LOW) && ((millis() - pressTime) >= LONG_PRESS_DURATION)) {
-
-    // Reset the press time
-    pressTime = 0;
-    ledSwitch = false;
-    servoSwitch = true;
-  }
-
-  // Detect a short press release
-  if ((buttonState == HIGH && pressTime > 0) && ((millis() - pressTime) < SHORT_PRESS_DURATION)) {
-
-    // Reset the press time
-    pressTime = 0;
-    ledSwitch = true;
-    servoSwitch = false;
+  if (prevMode != mode) {
+    Serial.print("Mode: ");
+    Serial.println(mode);
+    pCharacteristic->setValue(&mode, 1);
+    pCharacteristic->notify();
+    prevMode = mode;
   }
 }
+
+void bleSecuritySetup()
+{
+  esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_MITM_BOND;
+  esp_ble_io_cap_t iocap = ESP_IO_CAP_OUT;
+  uint8_t key_size = 16;
+  uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+  uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+  uint32_t passkey = PASSKEY;
+  uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
+  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE, &key_size, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH, &auth_option, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
+}
+
+void bleSetup()
+{
+  BLEDevice::init("LEDGoggles");
+  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+  BLEDevice::setSecurityCallbacks(new SecurityCallback());
+
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE
+  );
+
+  pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  pCharacteristic->setCallbacks(new GogglesWriteCallback());
+
+  BLEDescriptor *pDescr = new BLEDescriptor((uint16_t)0x2901);
+  pDescr->setValue("Goggles_Control");
+  pCharacteristic->addDescriptor(pDescr);
+
+  BLE2902 *pBLE2902 = new BLE2902();
+  pBLE2902->setNotifications(true);
+  pCharacteristic->addDescriptor(pBLE2902);
+
+  pService->start();
+
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);
+  BLEDevice::startAdvertising();
+
+  bleSecuritySetup();
+
+  Serial.println("BLE advertising as LEDGoggles");
+}
+
+
 
 void armPos(u_int16_t * filteredADC, u_int32_t wait)
 {
@@ -363,7 +433,6 @@ void IRAM_ATTR Timer0_ISR()
       blinker();
       break;
     case 2:
-      buttonReader();
       break;
     case 3:
       armPos(&xfilteredOutput, 50);
@@ -384,7 +453,11 @@ void IRAM_ATTR Timer0_ISR()
 
 void setup() {
   Serial.begin(115200);
-     // Set up the LED pin as an output
+  esp_log_level_set("*", ESP_LOG_DEBUG);
+
+  bleSetup();
+
+  // Set up the LED pin as an output
   pinMode(LED_PIN, OUTPUT);
 
   Timer0_Cfg = timerBegin(0, 80, true);
@@ -418,8 +491,28 @@ void setup() {
 
 
 void loop() {
+  // BLE re-advertising after disconnect
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500);
+    pServer->startAdvertising();
+    Serial.println("BLE re-advertising");
+    oldDeviceConnected = deviceConnected;
+  }
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
+  }
 
- 
+  // Process BLE command
+  if (bleCommandPending) {
+    bleCommandPending = false;
+    if (bleCommand >= 0 && bleCommand <= 5) {
+      mode = bleCommand;
+      notifyModeChange();
+    }
+  }
+
+  notifyModeChange();
+
   u_int32_t newMilisPrint = millis();
   if (newMilisPrint - printMilis > 100)
   {
