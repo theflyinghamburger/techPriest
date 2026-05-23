@@ -106,6 +106,7 @@ u_int32_t lightMilis = 0;
 
 u_int32_t servoMilis = 0;
 u_int32_t posTimePrev = 0;
+u_int32_t joystickMilis = 0;
 // Initialize the filter output
 u_int16_t xfilteredOutput = 0;
 u_int16_t yfilteredOutput = 0;
@@ -401,7 +402,6 @@ void IRAM_ATTR Timer0_ISR()
    switch (status) //2ms per status
   {
     case 0:
-      updateJoystick();
       break;
     case 1:
       blinker();
@@ -482,6 +482,12 @@ void loop() {
   }
   lighting();
   servoMove();
+
+  u_int32_t now = millis();
+  if (now - joystickMilis >= 16) {
+    joystickMilis = now;
+    updateJoystick();
+  }
   
 }
 
