@@ -73,7 +73,6 @@ class SecurityCallback : public BLESecurityCallbacks {
     if (cmpl.success) {
       Serial.println("  - BLE auth success");
       deviceConnected = true;
-      BLEDevice::startAdvertising();
     } else {
       Serial.println("  - BLE auth failure");
       if (pServer) {
