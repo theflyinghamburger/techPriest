@@ -6,16 +6,16 @@ Firmware repo for a Tech Priest cosplay prop set. Each prop has its own microcon
 
 | Project | Path | Platform | Build system | Purpose |
 |---------|------|----------|--------------|---------|
-| plasmaPistol | `plasmaPistol_platformio/` | ESP32 DevKit V1 | PlatformIO | 9-LED prop gun + BLE |
-| techPriest | `techPriest_platformio/` | ESP32 DevKit V1 | PlatformIO | LED googles, spotlight, joystick, servo arm |
-| servoSkull | `servoSkull_platformio/` | ESP32 DevKit V1 | PlatformIO | OLED eye animation (SSD1306, I2C) |
+| plasmaPistol | `plasmaPistol/` | ESP32 DevKit V1 | PlatformIO | 9-LED prop gun + BLE |
+| techPriest | `techPriest/` | ESP32 DevKit V1 | PlatformIO | LED googles, spotlight, joystick, servo arm |
+| servoSkull | `servoSkull/` | ESP32 DevKit V1 | PlatformIO | OLED eye animation (SSD1306, I2C) |
 | armDisplay | `armDisplay/` | Raspberry Pi Zero 2 W | Python | Touchscreen display |
 
 Original Arduino IDE `.ino` files preserved in `legacy_code/`.
 
 ## Quick commands
 
-Open each `*_platformio/` project folder in VS Code, then:
+Open each project folder in VS Code, then:
 
 | Action | Command |
 |--------|---------|
