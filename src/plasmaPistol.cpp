@@ -138,13 +138,13 @@ class SecurityCallback : public BLESecurityCallbacks {
     if(cmpl.success){
       Serial.println("   - SecurityCallback - Authentication Success");
       deviceConnected = true;
+      BLEDevice::startAdvertising();
     } else {
       Serial.println("   - SecurityCallback - Authentication Failure*");
       if (pServer) {
         pServer->removePeerDevice(pServer->getConnId(), true);
       }
     }
-    BLEDevice::startAdvertising();
   }
 };
 
