@@ -190,10 +190,10 @@ void setup() {
   // Create a BLE service
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // Create a BLE characteristic
+  // Create a BLE characteristic (bidirectional: notify + write)
   pCharacteristic = pService->createCharacteristic(
     CHARACTERISTIC_UUID,
-    BLECharacteristic::PROPERTY_NOTIFY
+    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE
   );
 
   pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
