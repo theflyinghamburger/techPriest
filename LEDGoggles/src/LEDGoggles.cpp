@@ -31,7 +31,6 @@ Servo myservo;  // create servo object to control a servo
 //NeoPixelBus<NeoBgrFeature, NeoEsp32I2s1X8Ws2811Method> strip1(10, 15); // note: older WS2811 and longer strip
 NeoPixelBus<NeoGrbFeature, NeoEsp32I2s1X8Ws2812xMethod> strip1(PIXEL_COUNT, PIXEL_PIN); // note: modern WS2812 with letter like WS2812b
 
-boolean oldState = HIGH;
 uint8_t     mode     = 4;    // Currently-active animation mode, 0-5 (default: spinning wheels red)
 
 // BLE configuration (shared UUIDs across props)
@@ -101,16 +100,16 @@ u_int16_t yReadings[FILTER_ORDER];
 u_int8_t filterIndex[2]; //Increase for number of ADCs
 
 u_int32_t secCount = 0;
-u_int32_t prevMilis[8]; //prev mil for each status
+u_int32_t prevMilis[2];
 u_int32_t printMilis = 0;
 u_int32_t lightMilis = 0;
-u_int32_t lightCasePrint = 0;
+
 u_int32_t servoMilis = 0;
 u_int32_t posTimePrev = 0;
 // Initialize the filter output
 u_int16_t xfilteredOutput = 0;
 u_int16_t yfilteredOutput = 0;
-u_int16_t swfilteredOutput = 0;
+
 u_int16_t xSum = 0;
 u_int16_t ySum = 0;
 u_int16_t prevLEDCount = 0;
@@ -119,17 +118,12 @@ u_int16_t milSecCount = 0;
 u_int8_t ledState = 0;
 u_int8_t status = 0;
 u_int8_t ledBounce = 0;
-u_int8_t servoBounce = 0;
 u_int8_t offset = 0;
-u_int8_t pos = 10;
+u_int8_t pos = 0;
 
 
 
 
-// Create a timer object
-TimerHandle_t timer;
-#define LED 21
- 
 hw_timer_t *Timer0_Cfg = NULL;
 
 // Forward declarations
@@ -162,7 +156,6 @@ void updateJoystick()
 {
     avg_flt (xADC, &(filterIndex[0]), xReadings, &xfilteredOutput, &xSum);
     avg_flt (yADC, &(filterIndex[1]), yReadings, &yfilteredOutput, &ySum);
-    //avg_flt (swADC, &(filterIndex[2]), swReadings, &swfilteredOutput, &swSum);
 }
 
 void blinker()
@@ -178,45 +171,27 @@ void blinker()
 
 void printSensorInfo()
 {
-  /*
-  Serial.print("X:");
-  Serial.println(xfilteredOutput);
-  Serial.print("Y:");
-  Serial.println(yfilteredOutput);
-*/
   Serial.print("XPOS:");
   Serial.println(pos);
-}
-void servoSweep()
-{
-  
-    if (pos < 110 && servoBounce == false)
-      {
-        pos++;
-        if (pos == 110)
-          servoBounce = true;
-      }
-    else if (pos > 0 && servoBounce == true)
-    {
-        pos--;
-        if (pos == 20)
-          servoBounce = false;
-      }
 }
 void servoMove()
 {   u_int32_t servoNowTime = millis();
   if ((servoNowTime - servoMilis) >= 15)
   {
     servoMilis = servoNowTime;
-    //servoSweep();
-
-		myservo.write(pos);    // tell servo to go to position in variable 'pos'
-		
+    myservo.write(pos);
   }
 }
 
+uint8_t prevLightingMode = 255;
+
 void lighting()
 {
+  if (prevLightingMode != mode) {
+    prevLEDCount = 0;
+    ledBounce = 0;
+    prevLightingMode = mode;
+  }
 
    switch(mode) {           // Start the new animation...
     case 0:
@@ -269,7 +244,7 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
           }
       }
       else if (bounce == true){
-        if ((strip1.PixelCount() >= prevLEDCount) && (ledBounce == false)){
+        if ((strip1.PixelCount() > prevLEDCount) && (ledBounce == false)){
           strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));         //  Set pixel's color (in RAM)
           strip1.Show();                       //  Update strip to match
           prevLEDCount++;
@@ -280,9 +255,10 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
           prevLEDCount--;
         }
         else{
-          if (ledBounce == 1)
-            strip1.SetPixelColor(prevLEDCount, RgbColor (0, 0, 0)); 
-            strip1.Show(); 
+          if (ledBounce == 1) {
+            strip1.SetPixelColor(prevLEDCount, RgbColor (0, 0, 0));
+            strip1.Show();
+          }
           ledBounce = !ledBounce;
         }
       } 
@@ -297,21 +273,19 @@ void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wai
   uint32_t newCall =  millis();
   if ((newCall - lightMilis) > wait) 
   {
-    for (int z = 0; z < 44; z++) {
-      uint32_t c = 0;
-      if (((offset + z) & 7) < 2) {// 4 pixels on...
-        strip1.SetPixelColor(   z, RgbColor (red, green, blue)); // First eye
-        strip1.SetPixelColor(23 - z, RgbColor (red, green, blue)); // Second eye (flipped)
+    for (int z = 0; z < 22; z++) {
+      if (((offset + z) & 7) < 2) {
+        strip1.SetPixelColor(z, RgbColor(red, green, blue));
+        strip1.SetPixelColor(43 - z, RgbColor(red, green, blue));
       }
-      else{
-        strip1.SetPixelColor(   z, RgbColor (0, 0, 0));
-        strip1.SetPixelColor(23 - z, RgbColor (0, 0, 0));
+      else {
+        strip1.SetPixelColor(z, RgbColor(0, 0, 0));
+        strip1.SetPixelColor(43 - z, RgbColor(0, 0, 0));
       }
     }
     strip1.Show();
     offset++;
-    if (offset > 44)
-    {
+    if (offset > 22) {
       offset = 0;
     }
     lightMilis = newCall;
@@ -353,6 +327,8 @@ void bleSetup()
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
   BLEDevice::setSecurityCallbacks(new SecurityCallback());
 
+  bleSecuritySetup();
+
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
@@ -382,8 +358,6 @@ void bleSetup()
   pAdvertising->setMinPreferred(0x0);
   BLEDevice::startAdvertising();
 
-  bleSecuritySetup();
-
   Serial.println("BLE advertising as LEDGoggles");
 }
 
@@ -403,8 +377,8 @@ void armPos(u_int16_t * filteredADC, u_int32_t wait)
     }
     else {
         pos--;
-        if (pos <= 10)
-          pos = 10;
+        if (pos <= 0)
+          pos = 0;
     }
         
   }
@@ -466,25 +440,14 @@ void setup() {
   timerAlarmEnable(Timer0_Cfg);
 
   strip1.Begin();
-  strip1.Show();  // Initialize all pixels to 'off'
+  strip1.Show();
 
-  // Allow allocation of all timers
-	//ESP32PWM::allocateTimer(0);
-	myservo.setPeriodHertz(50);    // standard 50 hz servo
-	myservo.attach(servoPin, 500, 3500); // attaches the servo on pin 18 to the servo object
+  myservo.setPeriodHertz(50);
+  myservo.attach(servoPin, 500, 3500);
 
-
-  // Initialize the sensor readings array
   for (int i = 0; i < FILTER_ORDER; i++) {
     xReadings[i] = 0;
     yReadings[i] = 0;
-    
-  }
-  for (int j = 0; j < 8; j++){
-    prevMilis[j] = 0;
-  }
-  for (int k = 0; k < 2; k++){
-    filterIndex[k] = 0;
   }
 }
 
@@ -510,8 +473,6 @@ void loop() {
       notifyModeChange();
     }
   }
-
-  notifyModeChange();
 
   u_int32_t newMilisPrint = millis();
   if (newMilisPrint - printMilis > 100)
