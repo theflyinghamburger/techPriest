@@ -277,19 +277,19 @@ void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wai
   uint32_t newCall =  millis();
   if ((newCall - lightMilis) > wait) 
   {
-    for (int z = 0; z < 22; z++) {
+    for (int z = 0; z < PIXEL_COUNT / 2; z++) {
       if (((offset + z) & 7) < 2) {
         strip1.SetPixelColor(z, RgbColor(red, green, blue));
-        strip1.SetPixelColor(43 - z, RgbColor(red, green, blue));
+        strip1.SetPixelColor(PIXEL_COUNT - 1 - z, RgbColor(red, green, blue));
       }
       else {
         strip1.SetPixelColor(z, RgbColor(0, 0, 0));
-        strip1.SetPixelColor(43 - z, RgbColor(0, 0, 0));
+        strip1.SetPixelColor(PIXEL_COUNT - 1 - z, RgbColor(0, 0, 0));
       }
     }
     strip1.Show();
     offset++;
-    if (offset > 22) {
+    if (offset > 7) {
       offset = 0;
     }
     lightMilis = newCall;
