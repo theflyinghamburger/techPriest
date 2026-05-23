@@ -4,7 +4,6 @@
 #include <BLEServer.h>
 #include <BLESecurity.h>
 #include <BLE2902.h>
-#include "esp_log.h"
 
 // UUIDs for BLE service and characteristic
 #define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
