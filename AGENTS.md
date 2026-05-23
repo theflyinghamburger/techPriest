@@ -4,16 +4,18 @@ Firmware repo for a Tech Priest cosplay prop set. Each prop has its own microcon
 
 ## Projects
 
-| Project | File | Platform | Build system | Purpose |
+| Project | Path | Platform | Build system | Purpose |
 |---------|------|----------|--------------|---------|
-| plasmaPistol | `src/plasmaPistol.cpp` | ESP32 DevKit V1 | PlatformIO | 9-LED prop gun + BLE |
-| techPriest | `src/techPriest/techPriest.ino` | ESP32 | Arduino IDE only | LED googles, spotlight, joystick, servo arm |
-| servoSkull | `src/servoSkull/servoSkull.ino` | ESP32 | Arduino IDE only | OLED eye animation (SSD1306, I2C) |
-| armDisplay | `src/armDisplay/armDisplay.py` | Raspberry Pi Zero 2 W | Python | Touchscreen display |
+| plasmaPistol | `plasmaPistol_platformio/` | ESP32 DevKit V1 | PlatformIO | 9-LED prop gun + BLE |
+| techPriest | `techPriest_platformio/` | ESP32 DevKit V1 | PlatformIO | LED googles, spotlight, joystick, servo arm |
+| servoSkull | `servoSkull_platformio/` | ESP32 DevKit V1 | PlatformIO | OLED eye animation (SSD1306, I2C) |
+| armDisplay | `armDisplay/` | Raspberry Pi Zero 2 W | Python | Touchscreen display |
 
-`platformio.ini` compiles `src/plasmaPistol.cpp` exclusively. The `.ino` files are not buildable from PlatformIO. `armDisplay` is a Python script run directly on the Pi.
+Original Arduino IDE `.ino` files preserved in `legacy_code/`.
 
-## Quick commands (plasmaPistol only)
+## Quick commands
+
+Open each `*_platformio/` project folder in VS Code, then:
 
 | Action | Command |
 |--------|---------|
@@ -49,8 +51,11 @@ Four LED patterns driven by `gCurrentPatternNumber`:
 
 ## Dependencies
 
-- `fastled/FastLED@^3.10.3` — only external library for plasmaPistol
-- ESP32 Arduino framework (BLE APIs built-in)
+- `fastled/FastLED@^3.10.3` — plasmaPistol
+- `madhephaestus/ESP32Servo@^3.2.0` — techPriest
+- `NeoPixelBus@^2.7.15` — techPriest
+- `adafruit/Adafruit SSD1306@^2.5.14` — servoSkull
+- `adafruit/Adafruit GFX Library@^1.11.9` — servoSkull
 
 ## Gotchas
 
