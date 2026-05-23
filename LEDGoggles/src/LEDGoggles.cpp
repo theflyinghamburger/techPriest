@@ -76,7 +76,10 @@ class SecurityCallback : public BLESecurityCallbacks {
     } else {
       Serial.println("  - BLE auth failure");
       if (pServer) {
-        pServer->removePeerDevice(pServer->getConnId(), true);
+        uint16_t connId = pServer->getConnId();
+        if (connId != 0) {
+          pServer->removePeerDevice(connId, true);
+        }
       }
     }
   }
@@ -98,7 +101,6 @@ u_int16_t xReadings[FILTER_ORDER];
 u_int16_t yReadings[FILTER_ORDER];
 u_int8_t filterIndex[2]; //Increase for number of ADCs
 
-u_int32_t secCount = 0;
 u_int32_t prevMilis[2];
 u_int32_t printMilis = 0;
 u_int32_t lightMilis = 0;
@@ -113,10 +115,7 @@ u_int16_t yfilteredOutput = 0;
 u_int16_t xSum = 0;
 u_int16_t ySum = 0;
 u_int16_t prevLEDCount = 0;
-u_int16_t milSecCount = 0;
-
 u_int8_t ledState = 0;
-u_int8_t status = 0;
 u_int8_t ledBounce = 0;
 u_int8_t offset = 0;
 u_int8_t pos = 0;
@@ -389,51 +388,23 @@ void armPos(u_int16_t * filteredADC, u_int32_t wait)
   }
 }
 // Define a callback function that will be called when the timer expires
+static uint32_t isrTick = 0;
 void IRAM_ATTR Timer0_ISR()
 {
-  portENTER_CRITICAL_ISR(&timerMux);
-  milSecCount+= 2;
-  status++;
-  if (status >= 8)
-  {
-    status = 0;
-  }
-  if (milSecCount >= 1000)
-  {
-    secCount++;
-    milSecCount = 0;
-  }
-
-   switch (status) //2ms per status
-  {
-    case 0:
-      break;
-    case 1:
-      blinker();
-      break;
-    case 2:
-      break;
-    case 3:
-      armPos(&xfilteredOutput, 50);
-       break;
-    case 4:
-      break;
-    case 5:
-      break;
-    case 6:
-      break;
-    case 7:
-      break;
-    default:
-      break;
-  }
-  portEXIT_CRITICAL_ISR(&timerMux);
-    
+   portENTER_CRITICAL_ISR(&timerMux);
+   isrTick++;
+   if ((isrTick & 1) == 1) {
+     blinker();
+   }
+   if ((isrTick % 25) == 0) {
+     armPos(&xfilteredOutput, 50);
+   }
+   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
 void setup() {
   Serial.begin(115200);
-  esp_log_level_set("*", ESP_LOG_DEBUG);
+  esp_log_level_set("*", ESP_LOG_WARN);
 
   bleSetup();
 
@@ -462,10 +433,9 @@ void setup() {
 void loop() {
   // BLE re-advertising after disconnect
   if (!deviceConnected && oldDeviceConnected) {
-    delay(500);
+    oldDeviceConnected = deviceConnected;
     pServer->startAdvertising();
     Serial.println("BLE re-advertising");
-    oldDeviceConnected = deviceConnected;
   }
   if (deviceConnected && !oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
