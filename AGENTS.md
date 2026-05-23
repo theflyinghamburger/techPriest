@@ -1,16 +1,17 @@
-# plasmaPistol
+# Tech Priest Cosplay Props
 
-ESP32 firmware repo for a Tech Priest cosplay prop set. PlatformIO builds the plasma pistol; two other sketches are Arduino IDE–only.
+Firmware repo for a Tech Priest cosplay prop set. Each prop has its own microcontroller.
 
 ## Projects
 
-| Project | File | Build system | Purpose |
-|---------|------|--------------|---------|
-| plasmaPistol | `src/plasmaPistol.cpp` | PlatformIO | 9-LED prop gun + BLE |
-| techPriest | `src/techPriest/techPriest.ino` | Arduino IDE only | Goggles, spotlight, joystick, servo arm |
-| servoSkull | `src/servoSkull/servoSkull.ino` | Arduino IDE only | OLED eye animation (SSD1306, I2C) |
+| Project | File | Platform | Build system | Purpose |
+|---------|------|----------|--------------|---------|
+| plasmaPistol | `src/plasmaPistol.cpp` | ESP32 DevKit V1 | PlatformIO | 9-LED prop gun + BLE |
+| techPriest | `src/techPriest/techPriest.ino` | ESP32 | Arduino IDE only | LED googles, spotlight, joystick, servo arm |
+| servoSkull | `src/servoSkull/servoSkull.ino` | ESP32 | Arduino IDE only | OLED eye animation (SSD1306, I2C) |
+| armDisplay | `src/armDisplay/armDisplay.py` | Raspberry Pi Zero 2 W | Python | Touchscreen display |
 
-`platformio.ini` compiles `src/plasmaPistol.cpp` exclusively. The `.ino` files are not buildable from PlatformIO.
+`platformio.ini` compiles `src/plasmaPistol.cpp` exclusively. The `.ino` files are not buildable from PlatformIO. `armDisplay` is a Python script run directly on the Pi.
 
 ## Quick commands (plasmaPistol only)
 
@@ -27,7 +28,7 @@ ESP32 firmware repo for a Tech Priest cosplay prop set. PlatformIO builds the pl
 - **Button**: GPIO 6 (input pullup, active-low)
 - **Board**: ESP32 DevKit V1
 
-## State machine
+## State machine (plasmaPistol)
 
 Four LED patterns driven by `gCurrentPatternNumber`:
 
@@ -38,7 +39,7 @@ Four LED patterns driven by `gCurrentPatternNumber`:
 | 2 | `overcharging` — blue→red blend | Button released after >2s hold |
 | 3 | `shooting` — reverse LED kill | Button released after <2s hold |
 
-## BLE
+## BLE (plasmaPistol)
 
 - Advertises as `Plasma_Pistol`
 - Service UUID: `09d2abe8-30ec-4519-86ff-ba0cbaf79160`

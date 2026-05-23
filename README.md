@@ -1,17 +1,25 @@
-# techPriest
-ESP32 Arduino code for Tech Priest cosplay. 
-Three ESP32 are used for modularity of parts.
+# Tech Priest Cosplay Props
+
+Firmware and software for various props in a Tech Priest cosplay. Each prop runs on a separate microcontroller.
 
 ## Projects
 
-### techPriest.ino
-- Goggles lighting
-- Spotlight lighting
-- Joystick sensors
-- Servo Arm Motor control
+| Project | File | Platform | Purpose |
+|---------|------|----------|---------|
+| techPriest | `src/techPriest/techPriest.ino` | ESP32 (Arduino IDE) | LED googles, spotlight, joystick sensors, servo arm control |
+| servoSkull | `src/servoSkull/servoSkull.ino` | ESP32 (Arduino IDE) | OLED eye animation (SSD1306, I2C) |
+| plasmaPistol | `src/plasmaPistol.cpp` | ESP32 (PlatformIO) | 9-LED prop gun + BLE state reporting |
+| armDisplay | `src/armDisplay/armDisplay.py` | Raspberry Pi Zero 2 W | Touchscreen display |
 
-### plasmaPistol.cpp
-ESP32 firmware for a prop plasma pistol with WS2812B LEDs and BLE state reporting.
+## Build Systems
+
+- **plasmaPistol**: PlatformIO (`pio run`)
+- **techPriest, servoSkull**: Arduino IDE only
+- **armDisplay**: Python script, run directly on Pi
+
+`platformio.ini` compiles `src/plasmaPistol.cpp` exclusively. The `.ino` files are not buildable from PlatformIO.
+
+## Plasma Pistol Details
 
 **Hardware:**
 - Board: ESP32 DevKit V1
@@ -34,6 +42,3 @@ ESP32 firmware for a prop plasma pistol with WS2812B LEDs and BLE state reportin
 **Dependencies:**
 - `fastled/FastLED@^3.10.3`
 - ESP32 Arduino framework (BLE APIs built-in)
-
-### servoSkull.ino
-- Eye display animation
