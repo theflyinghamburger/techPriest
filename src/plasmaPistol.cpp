@@ -43,7 +43,7 @@ uint8_t overchargingTransitionStep = 0;
 typedef void (*SimplePatternList[])();
 
 unsigned long previousMillis = 0;
-const long interval = 1000; // 1 second
+const long interval = 1000 / FRAMES_PER_SECOND;
 
 // PIN for BLE pairing
 #define PASSKEY 123456 // 6-digit PIN
