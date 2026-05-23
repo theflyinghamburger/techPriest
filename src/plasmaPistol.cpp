@@ -26,8 +26,6 @@ bool lastButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 50;
 unsigned long buttonPressTime = 0;
-bool buttonPressed = false;
-bool chargingComplete = false;
 
 BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
@@ -245,8 +243,6 @@ void loop() {
       if (reading == HIGH) { // Button pressed
         // Record when button was pressed
         buttonPressTime = millis();
-        buttonPressed = true;
-        chargingComplete = false;
 
         // Start charging when button is pressed
         gCurrentPatternNumber = 1; // Charging mode
@@ -257,9 +253,6 @@ void loop() {
         Serial.print("Button released after ");
         Serial.print(buttonHoldTime);
         Serial.println(" ms");
-
-        // Reset button state tracking
-        buttonPressed = false;
 
         if (buttonHoldTime > 2000) {
           // Long press - go to overcharging
