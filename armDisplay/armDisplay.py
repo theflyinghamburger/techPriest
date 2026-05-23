@@ -269,7 +269,7 @@ class CRT_GUI(tk.Tk):
         self.scroll_line_y = 0
         self.main_update()
 
-   def main_update(self):
+    def main_update(self):
         now = time.monotonic()
         if not hasattr(self, '_last_scanline'):
             self._last_scanline = 0
@@ -367,7 +367,7 @@ class CRT_GUI(tk.Tk):
     def noise_overlay(self):
         noise = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(noise)
-       for _ in range(self.noise_dots):
+        for _ in range(self.noise_dots):
             x = random.randint(0, self.width - 1)
             y = random.randint(0, self.height - 1)
             color = random.choice([(200, 200, 200, 60), (100, 100, 100, 60)])
