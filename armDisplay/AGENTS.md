@@ -28,13 +28,26 @@ Python tkinter CRT-styled GUI for Raspberry Pi Zero 2 W touchscreen. Four mode-s
 | Noise overlay | `noise_overlay()` | 100ms |
 | Vignette | `apply_vignette()` | Once at init |
 
-## BLE
-Not yet implemented. `button_action()` prints to console; intended to send commands to other props (plasmaPistol, LEDGoggles, servoSkull) over BLE.
+## BLE (PR #14)
+- **Library**: `bleak` (Python BLE client, graceful fallback if missing)
+- **BLE_Controller class**: `discover()`, `connect()`, `disconnect()`, `send_command()`
+- **Discovery**: auto-scans for `Plasma_Pistol` on startup (10s timeout)
+- **Status label**: top-right indicator (red = disconnected, lime = connected)
+- **Event loop**: asyncio runs in background daemon thread
+- **Shutdown**: `Ctrl+Q` triggers BLE disconnect before exit
+- **Target**: service `09d2abe8-30ec-4519-86ff-ba0cbaf79160`, char `102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107`
+- **Sends**: single uint8_t button index (0-3) via `write_gatt_char`
+- **Note**: receiving props need writable characteristic (plasmaPistol currently notify-only)
 
-## Gotchas
-- `noise_overlay()` creates a new `PhotoImage` + canvas item every 100ms without deleting the old one — memory leak
-- `screen_flicker()` can flash canvas bg to bright green — photosensitivity concern
-- Vignette draws 360 ellipses at startup — blocks main thread briefly
-- No error handling if `background.jpeg` is missing
+## Gotchas (remaining)
 - Button labels are generic; don't match Tech Priest theme
-- No graceful shutdown handler
+- Receiving props need writable BLE characteristic (plasmaPistol currently notify-only)
+- No reconnection logic if BLE drops mid-session
+- `bleak` requires BlueZ 5.43+ — verify Pi OS version
+
+## Fixed in PR #13
+- ~~`noise_overlay()` memory leak~~ — now tracks & deletes canvas item
+- ~~`screen_flicker()` photosafety~~ — reduced to subtle `#0a0a0a` variation
+- ~~Vignette blocks main thread~~ — stepped loop (60 iterations vs 360)
+- ~~Missing `background.jpeg` crash~~ — try/except with logger warning
+- ~~No graceful shutdown~~ — `Ctrl+Q` bound to `shutdown()`
