@@ -57,6 +57,7 @@ Four LED patterns driven by `gCurrentPatternNumber`:
 - `adafruit/Adafruit SSD1306@^2.5.14` — servoSkull
 - `adafruit/Adafruit GFX Library@^1.11.9` — servoSkull
 - `Pillow` — armDisplay
+- `bleak` — armDisplay BLE client
 
 ## Gotchas
 
@@ -65,3 +66,10 @@ Four LED patterns driven by `gCurrentPatternNumber`:
 - Main loop frame rate is `1000 / FRAMES_PER_SECOND` ≈ 8ms (~120 fps), not 1 Hz
 - `breathBrightness` in `idle()` clamps at 100–254, not the full 0–255 range
 - `SecurityCallback::onPassKeyRequest()` returns `PASSKEY` (123456); the static passkey is also registered via `esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, ...)`
+
+## armDisplay (PR #15)
+- **Config**: `armDisplay/config.json` — button labels, colors, effect timing, BLE targets, display dimensions
+- **Theming**: Tech Priest labels (PURGE, SCOUT, EXORCISE, RECALIBRATE)
+- **Single update loop**: `main_update()` replaces four independent `after()` timers (~60fps)
+- **BLE**: multi-prop discovery (Plasma_Pistol, LEDGoggles, Servo_Skull), auto-reconnect with configurable attempts
+- **Run**: `python3 armDisplay/armDisplay.py`
