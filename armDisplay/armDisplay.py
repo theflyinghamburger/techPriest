@@ -98,9 +98,9 @@ class CRT_GUI(tk.Tk):
         self.canvas.create_image(0, 0, image=self.vignette_image, anchor="nw")
 
     def screen_flicker(self):
-        # Apply a flicker effect by briefly adjusting the background brightness
-        # flicker_color = "black" if random.choice([True, False]) else "#0a0a0a"
-        flicker_color = "black" if random.choice([True, False]) else "green"
+        # Apply a subtle flicker effect by briefly adjusting the background brightness
+        # Use very dark shades to avoid photosensitivity concerns
+        flicker_color = "black" if random.choice([True, False]) else "#0a0a0a"
         self.canvas.configure(bg=flicker_color)
         self.after(200, self.screen_flicker)
 
