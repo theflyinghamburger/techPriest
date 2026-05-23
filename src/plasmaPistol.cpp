@@ -280,7 +280,6 @@ void loop() {
         }
         notifyPatternChange();
       }
-      notifyPatternChange();
     }
   }
 
