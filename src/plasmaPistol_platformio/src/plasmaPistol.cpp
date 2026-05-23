@@ -25,8 +25,6 @@ bool lastButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 50;
 unsigned long buttonPressTime = 0;
-bool buttonPressed = false;
-bool chargingComplete = false;
 
 BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
@@ -37,11 +35,15 @@ bool oldDeviceConnected = false;
 
 uint8_t gCurrentPatternNumber = 0;
 uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
+uint8_t overchargingTransitionStep = 0;
+int shootingStep = 0;
+unsigned long shootingLastTime = 0;
+const unsigned long shootingInterval = 20;
 
 typedef void (*SimplePatternList[])();
 
 unsigned long previousMillis = 0;
-const long interval = 1000; // 1 second
+const long interval = 1000 / FRAMES_PER_SECOND;
 
 // PIN for BLE pairing
 #define PASSKEY 123456 // 6-digit PIN
@@ -74,28 +76,27 @@ void charging() {
 }
 
 void overcharging() {
-  static uint8_t transitionStep = 0;
   for (int i = 0; i < NUM_LEDS; i++) {
-    uint8_t blendAmount = scale8(transitionStep, 255);
+    uint8_t blendAmount = scale8(overchargingTransitionStep, 255);
     leds[i] = blend(CRGB::Blue, CRGB::Red, blendAmount);
   }
-  transitionStep = qadd8(transitionStep, 1);
+  overchargingTransitionStep = qadd8(overchargingTransitionStep, 1);
   addGlitter(80);
-  if (transitionStep >= 255) {
-    transitionStep = 255;
+  if (overchargingTransitionStep >= 255) {
+    overchargingTransitionStep = 255;
   }
 }
 
 void shooting() {
-  // Execute shooting animation (reverse turn off LEDs)
-  for (int i = NUM_LEDS - 1; i >= 0; i--) {
-    leds[i] = CRGB::Black;
-    FastLED.show();
-    delay(20);
+  unsigned long now = millis();
+  if (now - shootingLastTime >= shootingInterval) {
+    shootingLastTime = now;
+    if (shootingStep >= 0 && shootingStep < NUM_LEDS) {
+      leds[NUM_LEDS - 1 - shootingStep] = CRGB::Black;
+      FastLED.show();
+      shootingStep++;
+    }
   }
-  // Ensure all LEDs are off
-  fill_solid(leds, NUM_LEDS, CRGB::Black);
-  FastLED.show();
 }
 
 void addGlitter(fract8 chanceOfGlitter) {
@@ -117,7 +118,7 @@ SimplePatternList gPatterns = {idle, charging, overcharging, shooting};
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest(){
-    return 000000;
+    return PASSKEY;
   }
 
   void onPassKeyNotify(uint32_t pass_key){}
@@ -134,11 +135,13 @@ class SecurityCallback : public BLESecurityCallbacks {
     if(cmpl.success){
       Serial.println("   - SecurityCallback - Authentication Success");
       deviceConnected = true;
+      BLEDevice::startAdvertising();
     } else {
       Serial.println("   - SecurityCallback - Authentication Failure*");
-      pServer->removePeerDevice(pServer->getConnId(), true);
+      if (pServer) {
+        pServer->removePeerDevice(pServer->getConnId(), true);
+      }
     }
-    BLEDevice::startAdvertising();
   }
 };
 
@@ -218,7 +221,7 @@ void setup() {
   bleSecuritySetup();
 
   Serial.println("Waiting for a client connection to notify...");
-  delay(100); // 3 second delay for recovery
+  delay(100); // brief delay for BLE recovery
 
   // Initialize FastLED
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
@@ -244,8 +247,6 @@ void loop() {
       if (reading == HIGH) { // Button pressed
         // Record when button was pressed
         buttonPressTime = millis();
-        buttonPressed = true;
-        chargingComplete = false;
 
         // Start charging when button is pressed
         gCurrentPatternNumber = 1; // Charging mode
@@ -257,30 +258,20 @@ void loop() {
         Serial.print(buttonHoldTime);
         Serial.println(" ms");
 
-        // Reset button state tracking
-        buttonPressed = false;
-
         if (buttonHoldTime > 2000) {
           // Long press - go to overcharging
           gCurrentPatternNumber = 2; // Overcharging mode
+          overchargingTransitionStep = 0;
           Serial.println("Long press - Overcharging");
         } else {
           // Short press - go to shooting
           gCurrentPatternNumber = 3; // Shooting mode
+          shootingStep = 0;
+          shootingLastTime = millis();
           Serial.println("Short press - Shooting");
         }
         notifyPatternChange();
-
-        // Handle shooting state (non-blocking)
-        if (gCurrentPatternNumber == 3) {
-          // Shooting state - execute shooting animation
-          shooting();
-          // Return to idle after shooting
-          gCurrentPatternNumber = 0; // Idle mode
-          Serial.println("Shooting complete - Returning to Idle");
-        }
       }
-      notifyPatternChange();
     }
   }
 
@@ -290,6 +281,13 @@ void loop() {
     // Call the appropriate pattern function based on current state
     gPatterns[gCurrentPatternNumber]();
     FastLED.show();
+
+    if (gCurrentPatternNumber == 3 && shootingStep >= NUM_LEDS) {
+      fill_solid(leds, NUM_LEDS, CRGB::Black);
+      FastLED.show();
+      gCurrentPatternNumber = 0;
+      Serial.println("Shooting complete - Returning to Idle");
+    }
   }
 
   // Re-advertising after disconnection
