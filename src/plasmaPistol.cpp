@@ -38,6 +38,7 @@ bool oldDeviceConnected = false;
 
 uint8_t gCurrentPatternNumber = 0;
 uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
+uint8_t overchargingTransitionStep = 0;
 
 typedef void (*SimplePatternList[])();
 
@@ -75,15 +76,14 @@ void charging() {
 }
 
 void overcharging() {
-  static uint8_t transitionStep = 0;
   for (int i = 0; i < NUM_LEDS; i++) {
-    uint8_t blendAmount = scale8(transitionStep, 255);
+    uint8_t blendAmount = scale8(overchargingTransitionStep, 255);
     leds[i] = blend(CRGB::Blue, CRGB::Red, blendAmount);
   }
-  transitionStep = qadd8(transitionStep, 1);
+  overchargingTransitionStep = qadd8(overchargingTransitionStep, 1);
   addGlitter(80);
-  if (transitionStep >= 255) {
-    transitionStep = 255;
+  if (overchargingTransitionStep >= 255) {
+    overchargingTransitionStep = 255;
   }
 }
 
@@ -264,6 +264,7 @@ void loop() {
         if (buttonHoldTime > 2000) {
           // Long press - go to overcharging
           gCurrentPatternNumber = 2; // Overcharging mode
+          overchargingTransitionStep = 0;
           Serial.println("Long press - Overcharging");
         } else {
           // Short press - go to shooting
