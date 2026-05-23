@@ -16,7 +16,6 @@
 #define FILTER_ORDER 16
 #define xADC 12
 #define yADC 13
-#define swADC 14
 #define PIXEL_PIN    15  // Digital IO pin connected to the NeoPixels.
 
 int servoPin = 4;
@@ -124,7 +123,7 @@ u_int8_t pos = 0;
 
 
 
-hw_timer_t *Timer0_Cfg = nullptr;
+hw_timer_t *Timer0_Cfg = nullptr; // Intentionally always-on: drives blinker + servo arm via ISR
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Forward declarations

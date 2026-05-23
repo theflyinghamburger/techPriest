@@ -28,9 +28,9 @@
 
 ## Efficiency (planned)
 
-- [ ] **`strip1.Show()` called per-pixel in `colorWipe`** (lines 242, 249, 254, 260) — each `Show()` triggers full 44-pixel DMA/I2S transfer (~30µs); needed for wipe animation effect but wasteful for mode 0
-- [ ] **`colorWipe` bounce does redundant work for mode 0** — mode 0 calls `colorWipe(0,0,0,50,true)` which sweeps all 44 pixels on (black) then off (black), issuing 88 `Show()` calls; replace with single `clearLED()` call
-- [ ] **`servoMove` fires every 15ms but called every `loop()` iteration (~8ms)** — minor overhead from `millis()` check each cycle; acceptable but could be optimized
+- [x] **`strip1.Show()` called per-pixel in `colorWipe`** — intentional for wipe animation effect; mode 0 now uses `clearLED()` instead
+- [x] **`colorWipe` bounce does redundant work for mode 0** — replaced with `clearLED()` call
+- [x] **`servoMove` fires every 15ms but called every `loop()` iteration (~8ms)** — minor overhead, acceptable as-is
 
 ## Cleanup (planned)
 
@@ -38,9 +38,9 @@
 - [x] **Dead/commented code** — removed `servoSweep()` function, commented Serial.print in `printSensorInfo()`, `//avg_flt(swADC, ...)`, `//ESP32PWM::allocateTimer(0)`
 - [x] **`prevMilis` array over-allocated** — reduced from 8 to 2 elements
 - [x] **Inconsistent servo bounds** — `armPos` uses 0–180, matches `myservo.attach(servoPin, 500, 3500)` (line 473)
-- [ ] **Missing `swReadings`/`swSum`** — switch button ADC filtering (`swADC`/line 18) has no arrays; add `u_int16_t swReadings[FILTER_ORDER]` and `u_int16_t swSum = 0` if the switch feature is needed
+- [x] **Missing `swReadings`/`swSum`** — removed unused `swADC` define (feature never implemented, no callers)
 - [x] **`LED_PIN` (GPIO 2) naming confusion** (line 12) — renamed to use `LED_BUILTIN` (framework-provided)
 - [x] **`hw_timer_t *Timer0_Cfg = NULL`** (line 127) — changed to `nullptr`
 - [x] **Inconsistent bool comparisons** (lines 238, 246, 252, 258) — normalized to `!bounce`, `!ledBounce`, `ledBounce`
 - [x] **`bleCommand >= 0` is dead code** (line 471) — removed redundant check
-- [ ] **`Timer0_Cfg` never stopped or detached** — hardware timer runs forever; not a bug for embedded firmware but poor practice
+- [x] **`Timer0_Cfg` never stopped or detached** — intentional: always-on timer drives blinker + servo via ISR (documented with comment)
