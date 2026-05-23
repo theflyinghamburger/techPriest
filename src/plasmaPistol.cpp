@@ -118,7 +118,7 @@ SimplePatternList gPatterns = {idle, charging, overcharging, shooting};
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest(){
-    return 000000;
+    return PASSKEY;
   }
 
   void onPassKeyNotify(uint32_t pass_key){}
