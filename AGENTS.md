@@ -7,7 +7,7 @@ Firmware repo for a Tech Priest cosplay prop set. Each prop has its own microcon
 | Project | Path | Platform | Build system | Purpose |
 |---------|------|----------|--------------|---------|
 | plasmaPistol | `plasmaPistol/` | ESP32 DevKit V1 | PlatformIO | 9-LED prop gun + BLE |
-| techPriest | `techPriest/` | ESP32 DevKit V1 | PlatformIO | LED googles, spotlight, joystick, servo arm |
+| LEDGoggles | `LEDGoggles/` | ESP32 DevKit V1 | PlatformIO | LED googles, spotlight, joystick, servo arm |
 | servoSkull | `servoSkull/` | ESP32 DevKit V1 | PlatformIO | OLED eye animation (SSD1306, I2C) |
 | armDisplay | `armDisplay/` | Raspberry Pi Zero 2 W | Python | Touchscreen display |
 
@@ -52,8 +52,8 @@ Four LED patterns driven by `gCurrentPatternNumber`:
 ## Dependencies
 
 - `fastled/FastLED@^3.10.3` — plasmaPistol
-- `madhephaestus/ESP32Servo@^3.2.0` — techPriest
-- `NeoPixelBus@^2.7.15` — techPriest
+- `madhephaestus/ESP32Servo@^3.2.0` — LEDGoggles
+- `NeoPixelBus@^2.7.15` — LEDGoggles
 - `adafruit/Adafruit SSD1306@^2.5.14` — servoSkull
 - `adafruit/Adafruit GFX Library@^1.11.9` — servoSkull
 
