@@ -9,7 +9,7 @@
 #define PIXEL_COUNT 44  // Number of NeoPixels
 
 // Define the LED pin
-#define LED_PIN 2
+
 
 // Define the filter order
 #define FILTER_ORDER 16
@@ -123,7 +123,7 @@ u_int8_t pos = 0;
 
 
 
-hw_timer_t *Timer0_Cfg = NULL;
+hw_timer_t *Timer0_Cfg = nullptr;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Forward declarations
@@ -165,7 +165,7 @@ void blinker()
     {
       prevMilis[1] = newMilis;
       ledState = !ledState;  
-      digitalWrite(LED_PIN, ledState);
+      digitalWrite(BUILTIN_LED, ledState);
     }
 }
 
@@ -240,7 +240,7 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
   if ((newCall - lightMilis) > wait) 
   {
 
-      if (bounce == false){
+      if (!bounce){
         if (strip1.PixelCount() > prevLEDCount)
         {
           strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));         //  Set pixel's color (in RAM)
@@ -248,7 +248,7 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
           prevLEDCount++;
           }
       }
-      else if (bounce == true){
+      else if (bounce){
         if (!ledBounce && prevLEDCount < strip1.PixelCount()){
           strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));
           strip1.Show();
@@ -409,7 +409,7 @@ void setup() {
   bleSetup();
 
   // Set up the LED pin as an output
-  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUILTIN_LED, OUTPUT);
 
   Timer0_Cfg = timerBegin(0, 80, true);
   timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, false);
@@ -447,7 +447,7 @@ void loop() {
     uint8_t cmd = bleCommand;
     bleCommandPending = false;
     portEXIT_CRITICAL(&timerMux);
-    if (cmd >= 0 && cmd <= 5) {
+    if (cmd <= 5) {
       mode = cmd;
       notifyModeChange();
     }
