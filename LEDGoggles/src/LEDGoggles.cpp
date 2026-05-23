@@ -194,6 +194,8 @@ void lighting()
   if (prevLightingMode != mode) {
     prevLEDCount = 0;
     ledBounce = 0;
+    offset = 0;
+    lightMilis = millis();
     prevLightingMode = mode;
   }
 
@@ -248,25 +250,24 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
           }
       }
       else if (bounce == true){
-        if ((strip1.PixelCount() > prevLEDCount) && (ledBounce == false)){
-          strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));         //  Set pixel's color (in RAM)
-          strip1.Show();                       //  Update strip to match
+        if (!ledBounce && prevLEDCount < strip1.PixelCount()){
+          strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));
+          strip1.Show();
           prevLEDCount++;
         }
-        else if ((prevLEDCount > 0) && (ledBounce == true)){
-          strip1.SetPixelColor(prevLEDCount, RgbColor (0, 0, 0));         //  Set pixel's color (in RAM)
-          strip1.Show();                       //  Update strip to match
+        else if (ledBounce && prevLEDCount > 0){
+          strip1.SetPixelColor(prevLEDCount - 1, RgbColor (0, 0, 0));
+          strip1.Show();
           prevLEDCount--;
         }
-        else{
-          if (ledBounce == 1) {
-            strip1.SetPixelColor(prevLEDCount, RgbColor (0, 0, 0));
-            strip1.Show();
-          }
-          ledBounce = !ledBounce;
+        else if (!ledBounce && prevLEDCount >= strip1.PixelCount()){
+          ledBounce = true;
         }
-      } 
-   
+        else if (ledBounce && prevLEDCount == 0){
+          ledBounce = false;
+        }
+     }
+
       lightMilis = newCall;
   }
 }
