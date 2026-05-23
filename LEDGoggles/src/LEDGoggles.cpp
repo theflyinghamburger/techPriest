@@ -5,6 +5,7 @@
 #include <BLEServer.h>
 #include <BLESecurity.h>
 #include <BLE2902.h>
+#include <esp_task_wdt.h>
 
 #define PIXEL_COUNT 44  // Number of NeoPixels
 
@@ -200,7 +201,7 @@ void lighting()
 
    switch(mode) {           // Start the new animation...
     case 0:
-      colorWipe( 0,   0,   0, 50, true);    // Black/off
+      clearLED();
       break;
     case 1:
       colorWipe(100,   0,   0, 50, true);    // Red
@@ -426,6 +427,8 @@ void setup() {
     xReadings[i] = 0;
     yReadings[i] = 0;
   }
+  esp_task_wdt_init(30, true);
+  esp_task_wdt_add(nullptr);
 }
 
 
@@ -468,6 +471,7 @@ void loop() {
     updateJoystick();
   }
   
+  esp_task_wdt_reset();
 }
 
 
