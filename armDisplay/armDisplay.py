@@ -208,6 +208,8 @@ class CRT_GUI(tk.Tk):
         self.geometry(f"{width}x{height}")
         self.title("Tech Priest Arm Display")
         self.attributes("-fullscreen", True)
+        self.update_idletasks()
+        self._scale = min(self.winfo_screenwidth() / width, self.winfo_screenheight() / height)
         self.configure(bg="black")
         self.bind("<Escape>", lambda e: self.attributes("-fullscreen", False))
         self.bind("<Control-q>", self.shutdown)
@@ -227,7 +229,8 @@ class CRT_GUI(tk.Tk):
 
         if bg_image:
             try:
-                self.bg_image = Image.open(bg_image).resize((width, height))
+                bg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), bg_image)
+                self.bg_image = Image.open(bg_path).resize((width, height))
                 self.bg_photo = ImageTk.PhotoImage(self.bg_image)
                 self.canvas.create_image(width // 2, height // 2, image=self.bg_photo, anchor="center")
             except Exception as e:
@@ -249,12 +252,14 @@ class CRT_GUI(tk.Tk):
         self.buttons = []
         for i in range(len(labels)):
             button_x = ((i + 1) * (3 * self.width // 25)) + (i * button_width)
+            fs = max(6, min(int((button_width - 8) / (len(labels[i]) * 0.6)), button_height - 12))
             button = tk.Button(
                 self, text=labels[i], command=lambda i=i: self.button_action(i),
                 bg=colors.get("bg", "black"), fg=colors.get("fg", "lime"),
                 activebackground=colors.get("active_bg", "green"),
                 activeforeground=colors.get("active_fg", "black"),
-                font=(colors.get("font", "Terminal"), colors.get("font_size", 9), "bold")
+                font=(colors.get("font", "Terminal"), fs, "bold"),
+                padx=4, pady=2
             )
             self.canvas.create_window(button_x, button_y_start, anchor="center", window=button, width=button_width, height=button_height)
             self.buttons.append(button)
