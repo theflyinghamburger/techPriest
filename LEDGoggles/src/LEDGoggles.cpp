@@ -40,10 +40,10 @@ uint8_t     mode     = 4;    // Currently-active animation mode, 0-5 (default: s
 
 BLEServer *pServer = nullptr;
 BLECharacteristic *pCharacteristic = nullptr;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-uint8_t bleCommand = 0;
-bool bleCommandPending = false;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
+volatile uint8_t bleCommand = 0;
+volatile bool bleCommandPending = false;
 uint8_t prevMode = 255;
 
 // BLE write callback — receives mode commands from armDisplay

@@ -30,11 +30,11 @@ BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
 BLEDescriptor *pDescr;
 BLE2902 *pBLE2902;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
 
-uint8_t gCurrentPatternNumber = 0;
-uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
+volatile uint8_t gCurrentPatternNumber = 0;
+volatile uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
 uint8_t overchargingTransitionStep = 0;
 int shootingStep = 0;
 unsigned long shootingLastTime = 0;
@@ -146,14 +146,35 @@ class SecurityCallback : public BLESecurityCallbacks {
 };
 
 class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
+  void onConnect(BLEServer* pSrv) {
     deviceConnected = true;
     Serial.println("Device connected");
   }
 
-  void onDisconnect(BLEServer* pServer) {
+  void onDisconnect(BLEServer* pSrv) {
     deviceConnected = false;
     Serial.println("Device disconnected");
+  }
+};
+
+// BLE write callback — receives commands from armDisplay
+class PlasmaWriteCallback : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pChr) {
+    if (pChr->getLength() >= 1) {
+      uint8_t cmd = pChr->getData()[0];
+      if (cmd >= 0 && cmd <= 3) {
+        gCurrentPatternNumber = cmd;
+        if (cmd == 2) {
+          overchargingTransitionStep = 0;
+        }
+        if (cmd == 3) {
+          shootingStep = 0;
+          shootingLastTime = millis();
+        }
+        Serial.print("BLE command received - Pattern: ");
+        Serial.println(cmd);
+      }
+    }
   }
 };
 
@@ -166,7 +187,8 @@ void notifyPatternChange() {
     Serial.println(gCurrentPatternNumber);
     */
     intToPrint(gCurrentPatternNumber);
-    pCharacteristic->setValue(&gCurrentPatternNumber, 1);
+    uint8_t val = gCurrentPatternNumber;
+    pCharacteristic->setValue(&val, 1);
     pCharacteristic->notify();
     prev_gCurrentPatternNumber = gCurrentPatternNumber;
   }
@@ -197,6 +219,7 @@ void setup() {
   );
 
   pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  pCharacteristic->setCallbacks(new PlasmaWriteCallback());
 
   // Create descriptors for the characteristic
   pDescr = new BLEDescriptor((uint16_t)0x2901);

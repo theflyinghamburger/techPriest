@@ -44,16 +44,16 @@ enum FlamerState {
 };
 
 // Global state
-static FlamerState gState = STATE_BOOT;
-static FlamerState gPrevState = STATE_BOOT;
+static volatile FlamerState gState = STATE_BOOT;
+static volatile FlamerState gPrevState = STATE_BOOT;
 
 // BLE
 static BLEServer *pServer = nullptr;
 static BLECharacteristic *pCharacteristic = nullptr;
-static bool deviceConnected = false;
-static bool oldDeviceConnected = false;
-static uint8_t bleCommand = 0;
-static bool bleCommandPending = false;
+static volatile bool deviceConnected = false;
+static volatile bool oldDeviceConnected = false;
+static volatile uint8_t bleCommand = 0;
+static volatile bool bleCommandPending = false;
 
 // Ramp state
 static unsigned long rampStartTime = 0;
