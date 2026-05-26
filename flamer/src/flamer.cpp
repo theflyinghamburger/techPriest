@@ -155,7 +155,7 @@ static void setupLedc() {
 }
 
 static void setMosfetDuty(uint8_t value) {
-  uint32_t duty = (uint32_t)value * 1024 / 255;
+  uint32_t duty = (uint32_t)value * 1023 / 255;
   ledcWrite(COIL_LEDC_CHANNEL, duty);
   ledcWrite(MOTOR_LEDC_CHANNEL, duty);
 }

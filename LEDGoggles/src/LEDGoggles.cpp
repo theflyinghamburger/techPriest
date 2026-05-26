@@ -115,16 +115,16 @@ u_int32_t servoMilis = 0;
 u_int32_t posTimePrev = 0;
 u_int32_t joystickMilis = 0;
 // Initialize the filter output
-u_int16_t xfilteredOutput = 0;
-u_int16_t yfilteredOutput = 0;
+volatile u_int16_t xfilteredOutput = 0;
+volatile u_int16_t yfilteredOutput = 0;
 
 u_int16_t xSum = 0;
 u_int16_t ySum = 0;
 u_int16_t prevLEDCount = 0;
-u_int8_t ledState = 0;
+volatile u_int8_t ledState = 0;
 u_int8_t ledBounce = 0;
 u_int8_t offset = 0;
-u_int8_t pos = 0;
+volatile u_int8_t pos = 0;
 
 
 
@@ -137,13 +137,13 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
 void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait);
 void clearLED();
 
-void avg_flt (u_int8_t channel, u_int8_t *index, u_int16_t *sensorReadings, u_int16_t *filteredOutput, u_int16_t *sum )
+void avg_flt (u_int8_t channel, u_int8_t *index, u_int16_t *sensorReadings, volatile u_int16_t *filteredOutput, u_int16_t *sum )
 {
   u_int16_t newReading = 0;
   // Get a new sensor reading
-  
+
   newReading = analogRead(channel);
-  
+
   // Add the new reading to the array
   *sum = *sum - sensorReadings[*index]; //remove oldest value from total
   sensorReadings[*index] = newReading;
@@ -373,24 +373,23 @@ void bleSetup()
 
 
 
-void armPos(u_int16_t * filteredADC, u_int32_t wait)
+void armPos(volatile u_int16_t * filteredADC, u_int32_t wait)
 {
   u_int32_t posTimeNow = millis();
-  if ((*filteredADC > 3500 || *filteredADC < 500 ) && (posTimeNow - posTimePrev >= wait))
+  u_int16_t adcVal = *filteredADC;
+  if ((adcVal > 3500 || adcVal < 500 ) && (posTimeNow - posTimePrev >= wait))
   {
     posTimePrev = posTimeNow;
-    if (*filteredADC > 3500)
+    if (adcVal > 3500)
     {
-      pos++;
-      if (pos > 180)
-        pos = 180;
+      if (pos < 180)
+        pos++;
     }
     else {
-        pos--;
-        if (pos <= 0)
-          pos = 0;
+        if (pos > 0)
+          pos--;
     }
-        
+
   }
 }
 // Define a callback function that will be called when the timer expires
