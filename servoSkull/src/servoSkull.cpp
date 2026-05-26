@@ -4901,6 +4901,9 @@ const unsigned char* epd_bitmap_allArray[70] = {
 };
 
 int i = 0;
+bool oledInitFailed = false;
+unsigned long lastFrameTime = 0;
+const unsigned long frameInterval = 25;
 
 void setup()   {                
     Serial.begin(115200);
@@ -4908,7 +4911,7 @@ void setup()   {
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
+    oledInitFailed = true;
   }
 
   // Initialize Neopixel eye
@@ -4960,23 +4963,38 @@ void setup()   {
 
 
 void loop() {
-  display.clearDisplay(); // Make sure the display is cleared
-  // Draw the bitmap:
-  // drawBitmap(x position, y position, bitmap data, bitmap width, bitmap height, color)
-  display.drawBitmap(0, 0, epd_bitmap_allArray[i], 128, 64, WHITE);
+  if (oledInitFailed) {
+    delay(1000);
+    return;
+  }
 
-  // Update the display
+  unsigned long now = millis();
+  if (now - lastFrameTime < frameInterval) {
+    delay(1);
+    notifyStateChange();
+    if (!deviceConnected && oldDeviceConnected) {
+      pServer->startAdvertising();
+      Serial.println("start advertising");
+      oldDeviceConnected = deviceConnected;
+    }
+    if (deviceConnected && !oldDeviceConnected) {
+      oldDeviceConnected = deviceConnected;
+    }
+    return;
+  }
+  lastFrameTime = now;
+
+  display.clearDisplay();
+  display.drawBitmap(0, 0, epd_bitmap_allArray[i], 128, 64, WHITE);
   display.display();
   i++;
-  if (i > 69){
+  if (i >= epd_bitmap_allArray_LEN) {
     i = 0;
   }
 
   notifyStateChange();
 
-  // Re-advertising after disconnection
   if (!deviceConnected && oldDeviceConnected) {
-    delay(500);
     pServer->startAdvertising();
     Serial.println("start advertising");
     oldDeviceConnected = deviceConnected;
@@ -4984,6 +5002,4 @@ void loop() {
   if (deviceConnected && !oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
   }
-
-  delay(25);
 }
