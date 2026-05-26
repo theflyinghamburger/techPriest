@@ -36,7 +36,25 @@ DEFAULT_CONFIG = {
         "noise_dots": 300
     },
     "ble": {
-        "targets": ["Plasma_Pistol", "LEDGoggles", "Servo_Skull"],
+        "targets": ["Plasma_Pistol", "LEDGoggles", "Servo_Skull", "TechPriest_Flamer"],
+        "uuids": {
+            "Plasma_Pistol": {
+                "service": "09d2abe8-30ec-4519-86ff-ba0cbaf79160",
+                "char": "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+            },
+            "TechPriest_Flamer": {
+                "service": "09d2abe9-30ec-4519-86ff-ba0cbaf79160",
+                "char": "102d8bff-dc7b-44d2-8cfe-0e09f2ee6107"
+            },
+            "LEDGoggles": {
+                "service": "09d2abea-30ec-4519-86ff-ba0cbaf79160",
+                "char": "102d8bf0-dc7b-44d2-8cfe-0e09f2ee6107"
+            },
+            "Servo_Skull": {
+                "service": "09d2abeb-30ec-4519-86ff-ba0cbaf79160",
+                "char": "102d8bf1-dc7b-44d2-8cfe-0e09f2ee6107"
+            }
+        },
         "service_uuid": "09d2abe8-30ec-4519-86ff-ba0cbaf79160",
         "char_uuid": "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107",
         "scan_timeout": 10,
@@ -114,6 +132,7 @@ class BLE_Controller:
     def __init__(self, config):
         self.config = config.get("ble", {})
         self.targets = self.config.get("targets", ["Plasma_Pistol"])
+        self.uuids = self.config.get("uuids", DEFAULT_CONFIG["ble"]["uuids"])
         self.service_uuid = self.config.get("service_uuid", DEFAULT_CONFIG["ble"]["service_uuid"])
         self.char_uuid = self.config.get("char_uuid", DEFAULT_CONFIG["ble"]["char_uuid"])
         self.scan_timeout = self.config.get("scan_timeout", 10)
@@ -124,6 +143,12 @@ class BLE_Controller:
         self._reconnect_task = None
         self._reconnect_attempts = 0
         self._running = False
+
+    def _get_uuids_for_target(self, target):
+        """Get service/char UUIDs for a specific target, falling back to defaults."""
+        if target in self.uuids:
+            return self.uuids[target]["service"], self.uuids[target]["char"]
+        return self.service_uuid, self.char_uuid
 
     async def discover_all(self):
         if not BLE_AVAILABLE:
@@ -137,7 +162,8 @@ class BLE_Controller:
                 dev_name = dev.name or ""
                 for target in self.targets:
                     if target in dev_name:
-                        d = BLE_Device(target, dev.address, self.service_uuid, self.char_uuid)
+                        svc_uuid, chr_uuid = self._get_uuids_for_target(target)
+                        d = BLE_Device(target, dev.address, svc_uuid, chr_uuid)
                         found[target] = d
                         logger.info(f"Found {target} at {dev.address}")
                         break

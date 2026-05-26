@@ -6,9 +6,9 @@
 #include <BLE2902.h>
 #include <driver/ledc.h>
 
-// BLE UUIDs (shared across props)
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+// BLE UUIDs (unique per prop)
+#define SERVICE_UUID "09d2abe9-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bff-dc7b-44d2-8cfe-0e09f2ee6107"
 
 // LED configuration
 #define DATA_PIN 5
@@ -31,8 +31,12 @@ CRGB leds[NUM_LEDS];
 #define RAMP_DURATION_MS 1000
 #define AUTO_SHUTOFF_MS 30000
 
-// BLE configuration
-#define PASSKEY 123456
+// BLE configuration - unique passkey per device from MAC
+uint32_t getDevicePasskey() {
+  uint8_t base_mac[6];
+  esp_read_mac(base_mac, ESP_MAC_WIFI_STA);
+  return (base_mac[3] << 16) | (base_mac[4] << 8) | base_mac[5];
+}
 
 // State machine
 enum FlamerState {
@@ -44,16 +48,16 @@ enum FlamerState {
 };
 
 // Global state
-static FlamerState gState = STATE_BOOT;
-static FlamerState gPrevState = STATE_BOOT;
+static volatile FlamerState gState = STATE_BOOT;
+static volatile FlamerState gPrevState = STATE_BOOT;
 
 // BLE
 static BLEServer *pServer = nullptr;
 static BLECharacteristic *pCharacteristic = nullptr;
-static bool deviceConnected = false;
-static bool oldDeviceConnected = false;
-static uint8_t bleCommand = 0;
-static bool bleCommandPending = false;
+static volatile bool deviceConnected = false;
+static volatile bool oldDeviceConnected = false;
+static volatile uint8_t bleCommand = 0;
+static volatile bool bleCommandPending = false;
 
 // Ramp state
 static unsigned long rampStartTime = 0;
@@ -90,7 +94,7 @@ class FlamerWriteCallback : public BLECharacteristicCallbacks {
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest() {
-    return PASSKEY;
+    return getDevicePasskey();
   }
   void onPassKeyNotify(uint32_t pass_key) {}
   bool onConfirmPIN(uint32_t pass_key) {
@@ -223,7 +227,7 @@ static void bleSecuritySetup() {
   uint8_t key_size = 16;
   uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
   uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
-  uint32_t passkey = PASSKEY;
+  uint32_t passkey = getDevicePasskey();
   uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
   esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
