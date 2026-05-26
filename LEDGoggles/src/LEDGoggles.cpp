@@ -5,17 +5,17 @@
 #include <BLEServer.h>
 #include <BLESecurity.h>
 #include <BLE2902.h>
+#include <esp_task_wdt.h>
 
 #define PIXEL_COUNT 44  // Number of NeoPixels
 
 // Define the LED pin
-#define LED_PIN 2
+
 
 // Define the filter order
 #define FILTER_ORDER 16
 #define xADC 12
 #define yADC 13
-#define swADC 14
 #define PIXEL_PIN    15  // Digital IO pin connected to the NeoPixels.
 
 int servoPin = 4;
@@ -31,7 +31,6 @@ Servo myservo;  // create servo object to control a servo
 //NeoPixelBus<NeoBgrFeature, NeoEsp32I2s1X8Ws2811Method> strip1(10, 15); // note: older WS2811 and longer strip
 NeoPixelBus<NeoGrbFeature, NeoEsp32I2s1X8Ws2812xMethod> strip1(PIXEL_COUNT, PIXEL_PIN); // note: modern WS2812 with letter like WS2812b
 
-boolean oldState = HIGH;
 uint8_t     mode     = 4;    // Currently-active animation mode, 0-5 (default: spinning wheels red)
 
 // BLE configuration (shared UUIDs across props)
@@ -74,11 +73,13 @@ class SecurityCallback : public BLESecurityCallbacks {
     if (cmpl.success) {
       Serial.println("  - BLE auth success");
       deviceConnected = true;
-      BLEDevice::startAdvertising();
     } else {
       Serial.println("  - BLE auth failure");
       if (pServer) {
-        pServer->removePeerDevice(pServer->getConnId(), true);
+        uint16_t connId = pServer->getConnId();
+        if (connId != 0) {
+          pServer->removePeerDevice(connId, true);
+        }
       }
     }
   }
@@ -100,37 +101,30 @@ u_int16_t xReadings[FILTER_ORDER];
 u_int16_t yReadings[FILTER_ORDER];
 u_int8_t filterIndex[2]; //Increase for number of ADCs
 
-u_int32_t secCount = 0;
-u_int32_t prevMilis[8]; //prev mil for each status
+u_int32_t prevMilis[2];
 u_int32_t printMilis = 0;
 u_int32_t lightMilis = 0;
-u_int32_t lightCasePrint = 0;
+
 u_int32_t servoMilis = 0;
 u_int32_t posTimePrev = 0;
+u_int32_t joystickMilis = 0;
 // Initialize the filter output
 u_int16_t xfilteredOutput = 0;
 u_int16_t yfilteredOutput = 0;
-u_int16_t swfilteredOutput = 0;
+
 u_int16_t xSum = 0;
 u_int16_t ySum = 0;
 u_int16_t prevLEDCount = 0;
-u_int16_t milSecCount = 0;
-
 u_int8_t ledState = 0;
-u_int8_t status = 0;
 u_int8_t ledBounce = 0;
-u_int8_t servoBounce = 0;
 u_int8_t offset = 0;
-u_int8_t pos = 10;
+u_int8_t pos = 0;
 
 
 
 
-// Create a timer object
-TimerHandle_t timer;
-#define LED 21
- 
-hw_timer_t *Timer0_Cfg = NULL;
+hw_timer_t *Timer0_Cfg = nullptr; // Intentionally always-on: drives blinker + servo arm via ISR
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Forward declarations
 void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool bounce);
@@ -162,7 +156,6 @@ void updateJoystick()
 {
     avg_flt (xADC, &(filterIndex[0]), xReadings, &xfilteredOutput, &xSum);
     avg_flt (yADC, &(filterIndex[1]), yReadings, &yfilteredOutput, &ySum);
-    //avg_flt (swADC, &(filterIndex[2]), swReadings, &swfilteredOutput, &swSum);
 }
 
 void blinker()
@@ -172,55 +165,42 @@ void blinker()
     {
       prevMilis[1] = newMilis;
       ledState = !ledState;  
-      digitalWrite(LED_PIN, ledState);
+      digitalWrite(BUILTIN_LED, ledState);
     }
 }
 
 void printSensorInfo()
 {
-  /*
-  Serial.print("X:");
-  Serial.println(xfilteredOutput);
-  Serial.print("Y:");
-  Serial.println(yfilteredOutput);
-*/
   Serial.print("XPOS:");
   Serial.println(pos);
-}
-void servoSweep()
-{
-  
-    if (pos < 110 && servoBounce == false)
-      {
-        pos++;
-        if (pos == 110)
-          servoBounce = true;
-      }
-    else if (pos > 0 && servoBounce == true)
-    {
-        pos--;
-        if (pos == 20)
-          servoBounce = false;
-      }
 }
 void servoMove()
 {   u_int32_t servoNowTime = millis();
   if ((servoNowTime - servoMilis) >= 15)
   {
     servoMilis = servoNowTime;
-    //servoSweep();
-
-		myservo.write(pos);    // tell servo to go to position in variable 'pos'
-		
+    portENTER_CRITICAL(&timerMux);
+    uint8_t cp = pos;
+    portEXIT_CRITICAL(&timerMux);
+    myservo.write(cp);
   }
 }
 
+uint8_t prevLightingMode = 255;
+
 void lighting()
 {
+  if (prevLightingMode != mode) {
+    prevLEDCount = 0;
+    ledBounce = 0;
+    offset = 0;
+    lightMilis = millis();
+    prevLightingMode = mode;
+  }
 
    switch(mode) {           // Start the new animation...
     case 0:
-      colorWipe( 0,   0,   0, 50, true);    // Black/off
+      clearLED();
       break;
     case 1:
       colorWipe(100,   0,   0, 50, true);    // Red
@@ -260,7 +240,7 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
   if ((newCall - lightMilis) > wait) 
   {
 
-      if (bounce == false){
+      if (!bounce){
         if (strip1.PixelCount() > prevLEDCount)
         {
           strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));         //  Set pixel's color (in RAM)
@@ -268,25 +248,25 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
           prevLEDCount++;
           }
       }
-      else if (bounce == true){
-        if ((strip1.PixelCount() >= prevLEDCount) && (ledBounce == false)){
-          strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));         //  Set pixel's color (in RAM)
-          strip1.Show();                       //  Update strip to match
+      else if (bounce){
+        if (!ledBounce && prevLEDCount < strip1.PixelCount()){
+          strip1.SetPixelColor(prevLEDCount, RgbColor (red, green, blue));
+          strip1.Show();
           prevLEDCount++;
         }
-        else if ((prevLEDCount > 0) && (ledBounce == true)){
-          strip1.SetPixelColor(prevLEDCount, RgbColor (0, 0, 0));         //  Set pixel's color (in RAM)
-          strip1.Show();                       //  Update strip to match
+        else if (ledBounce && prevLEDCount > 0){
+          strip1.SetPixelColor(prevLEDCount - 1, RgbColor (0, 0, 0));
+          strip1.Show();
           prevLEDCount--;
         }
-        else{
-          if (ledBounce == 1)
-            strip1.SetPixelColor(prevLEDCount, RgbColor (0, 0, 0)); 
-            strip1.Show(); 
-          ledBounce = !ledBounce;
+        else if (!ledBounce && prevLEDCount >= strip1.PixelCount()){
+          ledBounce = true;
         }
-      } 
-   
+        else if (ledBounce && prevLEDCount == 0){
+          ledBounce = false;
+        }
+     }
+
       lightMilis = newCall;
   }
 }
@@ -297,21 +277,19 @@ void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wai
   uint32_t newCall =  millis();
   if ((newCall - lightMilis) > wait) 
   {
-    for (int z = 0; z < 44; z++) {
-      uint32_t c = 0;
-      if (((offset + z) & 7) < 2) {// 4 pixels on...
-        strip1.SetPixelColor(   z, RgbColor (red, green, blue)); // First eye
-        strip1.SetPixelColor(23 - z, RgbColor (red, green, blue)); // Second eye (flipped)
+    for (int z = 0; z < PIXEL_COUNT / 2; z++) {
+      if (((offset + z) & 7) < 2) {
+        strip1.SetPixelColor(z, RgbColor(red, green, blue));
+        strip1.SetPixelColor(PIXEL_COUNT - 1 - z, RgbColor(red, green, blue));
       }
-      else{
-        strip1.SetPixelColor(   z, RgbColor (0, 0, 0));
-        strip1.SetPixelColor(23 - z, RgbColor (0, 0, 0));
+      else {
+        strip1.SetPixelColor(z, RgbColor(0, 0, 0));
+        strip1.SetPixelColor(PIXEL_COUNT - 1 - z, RgbColor(0, 0, 0));
       }
     }
     strip1.Show();
     offset++;
-    if (offset > 44)
-    {
+    if (offset > 7) {
       offset = 0;
     }
     lightMilis = newCall;
@@ -320,7 +298,7 @@ void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wai
 
 void notifyModeChange()
 {
-  if (prevMode != mode) {
+  if (prevMode != mode && pCharacteristic) {
     Serial.print("Mode: ");
     Serial.println(mode);
     pCharacteristic->setValue(&mode, 1);
@@ -353,6 +331,8 @@ void bleSetup()
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
   BLEDevice::setSecurityCallbacks(new SecurityCallback());
 
+  bleSecuritySetup();
+
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
@@ -382,8 +362,6 @@ void bleSetup()
   pAdvertising->setMinPreferred(0x0);
   BLEDevice::startAdvertising();
 
-  bleSecuritySetup();
-
   Serial.println("BLE advertising as LEDGoggles");
 }
 
@@ -403,62 +381,35 @@ void armPos(u_int16_t * filteredADC, u_int32_t wait)
     }
     else {
         pos--;
-        if (pos <= 10)
-          pos = 10;
+        if (pos <= 0)
+          pos = 0;
     }
         
   }
 }
 // Define a callback function that will be called when the timer expires
-void IRAM_ATTR Timer0_ISR() 
+static uint32_t isrTick = 0;
+void IRAM_ATTR Timer0_ISR()
 {
-  milSecCount+= 2;
-  status++;
-  if (status >= 8)
-  {
-    status = 0;
-  }
-  if (milSecCount >= 1000)
-  {
-    secCount++;
-    milSecCount = 0;
-  }
-  
-   switch (status) //2ms per status
-  {
-    case 0:
-      updateJoystick();
-      break;
-    case 1:
-      blinker();
-      break;
-    case 2:
-      break;
-    case 3:
-      armPos(&xfilteredOutput, 50);
-       break;
-    case 4:
-      break;
-    case 5:
-      break;
-    case 6:
-      break;
-    case 7: 
-      break;
-    default:
-      break;
-  }
-    
+   portENTER_CRITICAL_ISR(&timerMux);
+   isrTick++;
+   if ((isrTick & 1) == 1) {
+     blinker();
+   }
+   if ((isrTick % 25) == 0) {
+     armPos(&xfilteredOutput, 50);
+   }
+   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
 void setup() {
   Serial.begin(115200);
-  esp_log_level_set("*", ESP_LOG_DEBUG);
+  esp_log_level_set("*", ESP_LOG_WARN);
 
   bleSetup();
 
   // Set up the LED pin as an output
-  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUILTIN_LED, OUTPUT);
 
   Timer0_Cfg = timerBegin(0, 80, true);
   timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, false);
@@ -466,26 +417,17 @@ void setup() {
   timerAlarmEnable(Timer0_Cfg);
 
   strip1.Begin();
-  strip1.Show();  // Initialize all pixels to 'off'
+  strip1.Show();
 
-  // Allow allocation of all timers
-	//ESP32PWM::allocateTimer(0);
-	myservo.setPeriodHertz(50);    // standard 50 hz servo
-	myservo.attach(servoPin, 500, 3500); // attaches the servo on pin 18 to the servo object
+  myservo.setPeriodHertz(50);
+  myservo.attach(servoPin, 500, 3500);
 
-
-  // Initialize the sensor readings array
   for (int i = 0; i < FILTER_ORDER; i++) {
     xReadings[i] = 0;
     yReadings[i] = 0;
-    
   }
-  for (int j = 0; j < 8; j++){
-    prevMilis[j] = 0;
-  }
-  for (int k = 0; k < 2; k++){
-    filterIndex[k] = 0;
-  }
+  esp_task_wdt_init(30, true);
+  esp_task_wdt_add(nullptr);
 }
 
 
@@ -493,10 +435,9 @@ void setup() {
 void loop() {
   // BLE re-advertising after disconnect
   if (!deviceConnected && oldDeviceConnected) {
-    delay(500);
+    oldDeviceConnected = deviceConnected;
     pServer->startAdvertising();
     Serial.println("BLE re-advertising");
-    oldDeviceConnected = deviceConnected;
   }
   if (deviceConnected && !oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
@@ -504,14 +445,15 @@ void loop() {
 
   // Process BLE command
   if (bleCommandPending) {
+    portENTER_CRITICAL(&timerMux);
+    uint8_t cmd = bleCommand;
     bleCommandPending = false;
-    if (bleCommand >= 0 && bleCommand <= 5) {
-      mode = bleCommand;
+    portEXIT_CRITICAL(&timerMux);
+    if (cmd <= 5) {
+      mode = cmd;
       notifyModeChange();
     }
   }
-
-  notifyModeChange();
 
   u_int32_t newMilisPrint = millis();
   if (newMilisPrint - printMilis > 100)
@@ -521,7 +463,14 @@ void loop() {
   }
   lighting();
   servoMove();
+
+  u_int32_t now = millis();
+  if (now - joystickMilis >= 16) {
+    joystickMilis = now;
+    updateJoystick();
+  }
   
+  esp_task_wdt_reset();
 }
 
 

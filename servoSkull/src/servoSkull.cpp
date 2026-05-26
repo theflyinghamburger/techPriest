@@ -1,8 +1,14 @@
 
+#include <FastLED.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+#include <BLESecurity.h>
+#include <BLE2902.h>
 //#define SSD1306_128_64
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -16,6 +22,111 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 //#if (SSD1306_LCDHEIGHT != 64)
 //#error("Height incorrect, please fix Adafruit_SSD1306.h!");
 //#endif
+
+// BLE configuration
+#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+#define PASSKEY 123456
+
+BLEServer *pServer;
+BLECharacteristic *pCharacteristic;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+uint8_t gCurrentState = 0;
+uint8_t prev_gCurrentState = 255;
+
+// Neopixel eye configuration
+#define EYE_PIN 21
+#define EYE_TYPE WS2812B
+#define EYE_COLOR_ORDER GRB
+#define NUM_EYE_LEDS 1
+CRGB eyeLed[NUM_EYE_LEDS];
+
+class SecurityCallback : public BLESecurityCallbacks {
+  uint32_t onPassKeyRequest(){
+    return PASSKEY;
+  }
+  void onPassKeyNotify(uint32_t pass_key){}
+  bool onConfirmPIN(uint32_t pass_key){
+    return true;
+  }
+  bool onSecurityRequest(){
+    return true;
+  }
+  void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl){
+    if(cmpl.success){
+      Serial.println("   - SecurityCallback - Authentication Success");
+      deviceConnected = true;
+      BLEDevice::startAdvertising();
+    } else {
+      Serial.println("   - SecurityCallback - Authentication Failure");
+      if (pServer) {
+        pServer->removePeerDevice(pServer->getConnId(), true);
+      }
+    }
+  }
+};
+
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    deviceConnected = true;
+    Serial.println("Device connected");
+  }
+  void onDisconnect(BLEServer* pServer) {
+    deviceConnected = false;
+    Serial.println("Device disconnected");
+  }
+};
+
+class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    std::string value = pCharacteristic->getValue();
+    if (value.length() > 0) {
+      uint8_t cmd = value[0];
+      Serial.print("Received BLE command: ");
+      Serial.println(cmd);
+      if (cmd == 1) {
+        gCurrentState = 1;
+        eyeLed[0] = CRGB::Red;
+        FastLED.show();
+      } else {
+        gCurrentState = 0;
+        eyeLed[0] = CRGB::Black;
+        FastLED.show();
+      }
+    }
+  }
+};
+
+void notifyStateChange() {
+  if (prev_gCurrentState != gCurrentState) {
+    Serial.print("State changed from ");
+    Serial.print(prev_gCurrentState);
+    Serial.print(" to ");
+    Serial.println(gCurrentState);
+    pCharacteristic->setValue(&gCurrentState, 1);
+    pCharacteristic->notify();
+    prev_gCurrentState = gCurrentState;
+  }
+}
+
+void bleSecuritySetup(){
+  esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_MITM_BOND;
+  esp_ble_io_cap_t iocap = ESP_IO_CAP_OUT;
+  uint8_t key_size = 16;
+  uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+  uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+  uint32_t passkey = PASSKEY;
+  uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
+  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE, &key_size, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH, &auth_option, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(uint8_t));
+  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
+}
+
 // 'BW_loop_000', 128x64px
 const unsigned char epd_bitmap_BW_loop_000 [] PROGMEM = {
 	0xf8, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f, 
@@ -4793,6 +4904,51 @@ void setup()   {
     for(;;); // Don't proceed, loop forever
   }
 
+  // Initialize Neopixel eye
+  FastLED.addLeds<EYE_TYPE, EYE_PIN, EYE_COLOR_ORDER>(eyeLed, NUM_EYE_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(120);
+  eyeLed[0] = CRGB::Black;
+  FastLED.show();
+
+  // Initialize BLE
+  BLEDevice::init("Servo_Skull");
+  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+  BLEDevice::setSecurityCallbacks(new SecurityCallback());
+
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE
+  );
+
+  pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  pCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
+
+  BLEDescriptor *pDescr = new BLEDescriptor((uint16_t)0x2901);
+  pDescr->setValue("Servo_Skull_State");
+  pCharacteristic->addDescriptor(pDescr);
+
+  BLE2902 *pBLE2902 = new BLE2902();
+  pBLE2902->setNotifications(true);
+  pCharacteristic->addDescriptor(pBLE2902);
+
+  pService->start();
+
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);
+  BLEDevice::startAdvertising();
+
+  bleSecuritySetup();
+
+  Serial.println("Waiting for a client connection to notify...");
+  delay(100);
+
 }
 
 
@@ -4808,5 +4964,19 @@ void loop() {
   if (i > 69){
     i = 0;
   }
+
+  notifyStateChange();
+
+  // Re-advertising after disconnection
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500);
+    pServer->startAdvertising();
+    Serial.println("start advertising");
+    oldDeviceConnected = deviceConnected;
+  }
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
+  }
+
   delay(25);
 }
