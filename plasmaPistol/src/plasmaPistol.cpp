@@ -21,7 +21,7 @@ uint8_t breathBrightness = 100;
 
 // Button configuration
 #define BUTTON_PIN 6
-bool lastButtonState = HIGH;
+bool lastButtonState = LOW;
 unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 50;
 unsigned long buttonPressTime = 0;
@@ -153,6 +153,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pSrv) {
     deviceConnected = true;
     Serial.println("Device connected");
+    notifyPatternChange();
   }
 
   void onDisconnect(BLEServer* pSrv) {
@@ -237,6 +238,12 @@ void setup() {
   // Start the service
   pService->start();
 
+  // Initialize FastLED
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(BRIGHTNESS);
+  fill_solid(leds, NUM_LEDS, CRGB::Black); // start up
+  startup();
+
   // Start advertising
   BLEAdvertising *pAdvertising = pServer->getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
@@ -249,13 +256,6 @@ void setup() {
 
   Serial.println("Waiting for a client connection to notify...");
   delay(100); // brief delay for BLE recovery
-
-  // Initialize FastLED
-  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
-  FastLED.setBrightness(BRIGHTNESS);
-  fill_solid(leds, NUM_LEDS, CRGB::Black); // start up
-  notifyPatternChange();
-  startup();
 }
 
 void loop() {
@@ -306,7 +306,9 @@ void loop() {
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     // Call the appropriate pattern function based on current state
-    gPatterns[gCurrentPatternNumber]();
+    if (gCurrentPatternNumber < 4) {
+      gPatterns[gCurrentPatternNumber]();
+    }
     FastLED.show();
 
     if (gCurrentPatternNumber == 3 && shootingStep >= NUM_LEDS) {
@@ -314,6 +316,7 @@ void loop() {
       FastLED.show();
       gCurrentPatternNumber = 0;
       Serial.println("Shooting complete - Returning to Idle");
+      notifyPatternChange();
     }
   }
 
