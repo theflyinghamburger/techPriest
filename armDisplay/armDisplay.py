@@ -7,6 +7,7 @@ import threading
 import json
 import os
 import time
+from copy import deepcopy
 
 try:
     from bleak import BleakClient, BleakScanner
@@ -68,17 +69,22 @@ DEFAULT_CONFIG = {
     }
 }
 
+def deep_merge(base, override):
+    """Recursively merge override into base dict."""
+    result = base.copy()
+    for k, v in override.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
 def load_config(path="config.json"):
     if os.path.exists(path):
         try:
             with open(path) as f:
                 user = json.load(f)
-            cfg = DEFAULT_CONFIG.copy()
-            for k, v in user.items():
-                if isinstance(v, dict) and k in cfg and isinstance(cfg[k], dict):
-                    cfg[k].update(v)
-                else:
-                    cfg[k] = v
+            cfg = deep_merge(DEFAULT_CONFIG, user)
             logger.info(f"Loaded config from {path}")
             return cfg
         except Exception as e:
@@ -143,6 +149,7 @@ class BLE_Controller:
         self._reconnect_task = None
         self._reconnect_attempts = 0
         self._running = False
+        self._devices_lock = threading.Lock()
 
     def _get_uuids_for_target(self, target):
         """Get service/char UUIDs for a specific target, falling back to defaults."""
@@ -156,12 +163,13 @@ class BLE_Controller:
             return {}
         logger.info(f"Scanning for targets: {self.targets}")
         try:
-            devices = await BleakScanner.discover(timeout=self.scan_timeout)
+            async with BleakScanner() as scanner:
+                devices = await scanner.discover(timeout=self.scan_timeout)
             found = {}
             for dev in devices:
                 dev_name = dev.name or ""
                 for target in self.targets:
-                    if target in dev_name:
+                    if dev_name == target:
                         svc_uuid, chr_uuid = self._get_uuids_for_target(target)
                         d = BLE_Device(target, dev.address, svc_uuid, chr_uuid)
                         found[target] = d
@@ -187,25 +195,29 @@ class BLE_Controller:
         logger.info("All BLE devices disconnected")
 
     async def send_to_all(self, button_index):
-        results = []
-        for name, dev in self.devices.items():
-            r = await dev.send_command(button_index)
-            results.append((name, r))
-            logger.info(f"Sent {button_index} to {name}: {'OK' if r else 'FAIL'}")
-        return results
+        coros = [dev.send_command(button_index) for dev in self.devices.values()]
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        named = []
+        for (name, _), r in zip(self.devices.items(), results):
+            ok = r if isinstance(r, bool) else False
+            named.append((name, ok))
+            logger.info(f"Sent {button_index} to {name}: {'OK' if ok else 'FAIL'}")
+        return named
 
     async def reconnect_loop(self):
         self._running = True
         while self._running:
             disconnected = [n for n, d in self.devices.items() if not d.connected]
             if not disconnected:
+                self._reconnect_attempts = 0
                 await asyncio.sleep(self.reconnect_delay)
                 continue
             self._reconnect_attempts += 1
             if self._reconnect_attempts > self.max_reconnect_attempts:
-                logger.warning(f"Max reconnect attempts ({self.max_reconnect_attempts}) reached")
-                self._running = False
-                break
+                logger.warning(f"Max reconnect attempts ({self.max_reconnect_attempts}) reached, backing off...")
+                await asyncio.sleep(30)
+                self._reconnect_attempts = 0
+                continue
             logger.info(f"Reconnect attempt {self._reconnect_attempts}/{self.max_reconnect_attempts}")
             found = await self.discover_all()
             for name, dev in found.items():
@@ -222,9 +234,9 @@ class BLE_Controller:
             )
 
 class CRT_GUI(tk.Tk):
-    def __init__(self, config=None):
-        self.config = config or load_config()
-        disp = self.config.get("display", {})
+    def __init__(self, app_config=None):
+        self._app_config = app_config or load_config()
+        disp = self._app_config.get("display", {})
         width = disp.get("width", 480)
         height = disp.get("height", 320)
         bg_image = disp.get("background_image", "background.jpeg")
@@ -240,7 +252,7 @@ class CRT_GUI(tk.Tk):
         self.canvas = tk.Canvas(self, width=width, height=height, bg="black", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
 
-        self.ble = BLE_Controller(self.config)
+        self.ble = BLE_Controller(self._app_config)
         self.ble.loop = asyncio.new_event_loop()
         self.ble_thread = threading.Thread(target=self.ble.loop.run_forever, daemon=True)
         self.ble_thread.start()
@@ -267,14 +279,16 @@ class CRT_GUI(tk.Tk):
         self.start_effects()
 
     def create_buttons(self):
-        labels = self.config.get("button_labels", DEFAULT_CONFIG["button_labels"])
-        colors = self.config.get("button_colors", DEFAULT_CONFIG["button_colors"])
+        labels = self._app_config.get("button_labels", DEFAULT_CONFIG["button_labels"])
+        colors = self._app_config.get("button_colors", DEFAULT_CONFIG["button_colors"])
         button_y_start = int(self.height * 0.85)
         button_height = int(self.height * 0.3 / 2)
-        button_width = self.width // 7
+        num = len(labels)
+        gap = self.width // (num * 2 + 1)
+        button_width = gap
         self.buttons = []
-        for i in range(len(labels)):
-            button_x = ((i + 1) * (3 * self.width // 25)) + (i * button_width)
+        for i in range(num):
+            button_x = gap * (2 * i + 1)
             button = tk.Button(
                 self, text=labels[i], command=lambda i=i: self.button_action(i),
                 bg=colors.get("bg", "black"), fg=colors.get("fg", "lime"),
@@ -286,7 +300,7 @@ class CRT_GUI(tk.Tk):
             self.buttons.append(button)
 
     def start_effects(self):
-        effects = self.config.get("effects", DEFAULT_CONFIG["effects"])
+        effects = self._app_config.get("effects", DEFAULT_CONFIG["effects"])
         self.scanline_interval = effects.get("scanline_interval", 30)
         self.flicker_interval = effects.get("flicker_interval", 200)
         self.noise_interval = effects.get("noise_interval", 100)
@@ -319,7 +333,7 @@ class CRT_GUI(tk.Tk):
         self.after(16, self.main_update)
 
     def button_action(self, button_id):
-        labels = self.config.get("button_labels", DEFAULT_CONFIG["button_labels"])
+        labels = self._app_config.get("button_labels", DEFAULT_CONFIG["button_labels"])
         logger.info(f"Button {labels[button_id]} clicked")
         asyncio.run_coroutine_threadsafe(
             self.ble.send_to_all(button_id),
@@ -329,7 +343,8 @@ class CRT_GUI(tk.Tk):
     async def ble_discover(self):
         found = await self.ble.discover_all()
         if found:
-            self.ble.devices = found
+            with self.ble._devices_lock:
+                self.ble.devices = found
             count = await self.ble.connect_all()
             self.after(0, lambda: self.update_status_label(count))
             if count > 0:
@@ -338,12 +353,15 @@ class CRT_GUI(tk.Tk):
             self.after(0, lambda: self.ble_status.config(text="BLE: not found", fg="red"))
 
     def update_status_label(self, count):
-        total = len(self.ble.devices)
+        with self.ble._devices_lock:
+            total = len(self.ble.devices)
+            connected_names = ', '.join(n for n, d in self.ble.devices.items() if d.connected)
         self.ble_status.config(text=f"BLE: {count}/{total}", fg="lime" if count == total else "yellow")
-        self.connected_count.config(text=f"Connected: {', '.join(n for n, d in self.ble.devices.items() if d.connected)}")
+        self.connected_count.config(text=f"Connected: {connected_names}")
 
     def update_ble_status(self):
-        connected = sum(1 for d in self.ble.devices.values() if d.connected)
+        with self.ble._devices_lock:
+            connected = sum(1 for d in self.ble.devices.values() if d.connected)
         self.update_status_label(connected)
         self.after(2000, self.update_ble_status)
 
@@ -351,17 +369,21 @@ class CRT_GUI(tk.Tk):
         logger.info("Shutting down...")
         self._shutdown = True
         if self.ble.loop and self.ble.loop.is_running():
-            asyncio.run_coroutine_threadsafe(self.ble.disconnect_all(), self.ble.loop)
-            self.ble.loop.call_soon_threadsafe(self.ble.loop.stop)
+            fut = asyncio.run_coroutine_threadsafe(self.ble.disconnect_all(), self.ble.loop)
+            fut.add_done_callback(lambda _: self.ble.loop.call_soon_threadsafe(self.ble.loop.stop))
         self.after(100, self.destroy)
 
     def scroll_line_effect(self):
-        self.canvas.delete("scroll_line")
-        self.canvas.delete("scroll_line_0")
-        self.canvas.delete("scroll_line_1")
-        self.canvas.create_line(0, self.scroll_line_y, self.width, self.scroll_line_y, fill="olivedrab", width=2, tags="scroll_line_0")
-        self.canvas.create_line(0, self.scroll_line_y + 2, self.width, self.scroll_line_y + 2, fill="lime", width=1, tags="scroll_line")
-        self.canvas.create_line(0, self.scroll_line_y + 3, self.width, self.scroll_line_y + 3, fill="olivedrab", width=2, tags="scroll_line_1")
+        if not hasattr(self, '_scroll_line_ids'):
+            self._scroll_line_ids = (
+                self.canvas.create_line(0, 0, 0, 0, fill="olivedrab", width=2, tags="scroll_line_0"),
+                self.canvas.create_line(0, 0, 0, 0, fill="lime", width=1, tags="scroll_line"),
+                self.canvas.create_line(0, 0, 0, 0, fill="olivedrab", width=2, tags="scroll_line_1")
+            )
+        y = self.scroll_line_y
+        self.canvas.coords(self._scroll_line_ids[0], 0, y, self.width, y)
+        self.canvas.coords(self._scroll_line_ids[1], 0, y + 2, self.width, y + 2)
+        self.canvas.coords(self._scroll_line_ids[2], 0, y + 3, self.width, y + 3)
         self.scroll_line_y += 5
         if self.scroll_line_y > self.height:
             self.scroll_line_y = 0
@@ -391,17 +413,18 @@ class CRT_GUI(tk.Tk):
         self.canvas.configure(bg=flicker_color)
 
     def noise_overlay(self):
-        noise = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(noise)
+        if not hasattr(self, '_noise_img'):
+            self._noise_img = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+            self.noise_item = self.canvas.create_image(0, 0, image=self._noise_img, anchor="nw")
+        draw = ImageDraw.Draw(self._noise_img)
+        self._noise_img.putdata([(0, 0, 0, 0)] * (self.width * self.height))
         for _ in range(self.noise_dots):
             x = random.randint(0, self.width - 1)
             y = random.randint(0, self.height - 1)
             color = random.choice([(200, 200, 200, 60), (100, 100, 100, 60)])
             draw.point((x, y), fill=color)
-        self.noise_image = ImageTk.PhotoImage(noise)
-        if self.noise_item is not None:
-            self.canvas.delete(self.noise_item)
-        self.noise_item = self.canvas.create_image(0, 0, image=self.noise_image, anchor="nw")
+        self.noise_image = ImageTk.PhotoImage(self._noise_img)
+        self.canvas.itemconfig(self.noise_item, image=self.noise_image)
 
 if __name__ == "__main__":
     config = load_config()
