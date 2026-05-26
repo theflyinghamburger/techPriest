@@ -146,14 +146,35 @@ class SecurityCallback : public BLESecurityCallbacks {
 };
 
 class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
+  void onConnect(BLEServer* pSrv) {
     deviceConnected = true;
     Serial.println("Device connected");
   }
 
-  void onDisconnect(BLEServer* pServer) {
+  void onDisconnect(BLEServer* pSrv) {
     deviceConnected = false;
     Serial.println("Device disconnected");
+  }
+};
+
+// BLE write callback — receives commands from armDisplay
+class PlasmaWriteCallback : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pChr) {
+    if (pChr->getLength() >= 1) {
+      uint8_t cmd = pChr->getData()[0];
+      if (cmd >= 0 && cmd <= 3) {
+        gCurrentPatternNumber = cmd;
+        if (cmd == 2) {
+          overchargingTransitionStep = 0;
+        }
+        if (cmd == 3) {
+          shootingStep = 0;
+          shootingLastTime = millis();
+        }
+        Serial.print("BLE command received - Pattern: ");
+        Serial.println(cmd);
+      }
+    }
   }
 };
 
@@ -197,6 +218,7 @@ void setup() {
   );
 
   pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  pCharacteristic->setCallbacks(new PlasmaWriteCallback());
 
   // Create descriptors for the characteristic
   pDescr = new BLEDescriptor((uint16_t)0x2901);
