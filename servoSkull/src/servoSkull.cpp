@@ -23,16 +23,22 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 //#error("Height incorrect, please fix Adafruit_SSD1306.h!");
 //#endif
 
-// BLE configuration
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
-#define PASSKEY 123456
+// BLE configuration (unique per prop)
+#define SERVICE_UUID "09d2abeb-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bf1-dc7b-44d2-8cfe-0e09f2ee6107"
+
+// Unique passkey per device from MAC address
+uint32_t getDevicePasskey() {
+  uint8_t base_mac[6];
+  esp_read_mac(base_mac, ESP_MAC_WIFI_STA);
+  return (base_mac[3] << 16) | (base_mac[4] << 8) | base_mac[5];
+}
 
 BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-uint8_t gCurrentState = 0;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
+volatile uint8_t gCurrentState = 0;
 uint8_t prev_gCurrentState = 255;
 
 // Neopixel eye configuration
@@ -44,7 +50,7 @@ CRGB eyeLed[NUM_EYE_LEDS];
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest(){
-    return PASSKEY;
+    return getDevicePasskey();
   }
   void onPassKeyNotify(uint32_t pass_key){}
   bool onConfirmPIN(uint32_t pass_key){
@@ -104,7 +110,8 @@ void notifyStateChange() {
     Serial.print(prev_gCurrentState);
     Serial.print(" to ");
     Serial.println(gCurrentState);
-    pCharacteristic->setValue(&gCurrentState, 1);
+    uint8_t val = gCurrentState;
+    pCharacteristic->setValue(&val, 1);
     pCharacteristic->notify();
     prev_gCurrentState = gCurrentState;
   }
@@ -116,7 +123,7 @@ void bleSecuritySetup(){
   uint8_t key_size = 16;
   uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
   uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
-  uint32_t passkey = PASSKEY;
+  uint32_t passkey = getDevicePasskey();
   uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
   esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
@@ -4894,6 +4901,9 @@ const unsigned char* epd_bitmap_allArray[70] = {
 };
 
 int i = 0;
+bool oledInitFailed = false;
+unsigned long lastFrameTime = 0;
+const unsigned long frameInterval = 25;
 
 void setup()   {                
     Serial.begin(115200);
@@ -4901,7 +4911,7 @@ void setup()   {
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
+    oledInitFailed = true;
   }
 
   // Initialize Neopixel eye
@@ -4953,23 +4963,38 @@ void setup()   {
 
 
 void loop() {
-  display.clearDisplay(); // Make sure the display is cleared
-  // Draw the bitmap:
-  // drawBitmap(x position, y position, bitmap data, bitmap width, bitmap height, color)
-  display.drawBitmap(0, 0, epd_bitmap_allArray[i], 128, 64, WHITE);
+  if (oledInitFailed) {
+    delay(1000);
+    return;
+  }
 
-  // Update the display
+  unsigned long now = millis();
+  if (now - lastFrameTime < frameInterval) {
+    delay(1);
+    notifyStateChange();
+    if (!deviceConnected && oldDeviceConnected) {
+      pServer->startAdvertising();
+      Serial.println("start advertising");
+      oldDeviceConnected = deviceConnected;
+    }
+    if (deviceConnected && !oldDeviceConnected) {
+      oldDeviceConnected = deviceConnected;
+    }
+    return;
+  }
+  lastFrameTime = now;
+
+  display.clearDisplay();
+  display.drawBitmap(0, 0, epd_bitmap_allArray[i], 128, 64, WHITE);
   display.display();
   i++;
-  if (i > 69){
+  if (i >= epd_bitmap_allArray_LEN) {
     i = 0;
   }
 
   notifyStateChange();
 
-  // Re-advertising after disconnection
   if (!deviceConnected && oldDeviceConnected) {
-    delay(500);
     pServer->startAdvertising();
     Serial.println("start advertising");
     oldDeviceConnected = deviceConnected;
@@ -4977,6 +5002,4 @@ void loop() {
   if (deviceConnected && !oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
   }
-
-  delay(25);
 }
