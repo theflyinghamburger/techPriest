@@ -45,8 +45,12 @@ typedef void (*SimplePatternList[])();
 unsigned long previousMillis = 0;
 const long interval = 1000 / FRAMES_PER_SECOND;
 
-// PIN for BLE pairing
-#define PASSKEY 123456 // 6-digit PIN
+// PIN for BLE pairing - unique per device from MAC address
+uint32_t getDevicePasskey() {
+  uint8_t base_mac[6];
+  esp_read_mac(base_mac, ESP_MAC_WIFI_STA);
+  return (base_mac[3] << 16) | (base_mac[4] << 8) | base_mac[5];
+}
 
 // Function prototypes
 void idle();
@@ -118,7 +122,7 @@ SimplePatternList gPatterns = {idle, charging, overcharging, shooting};
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest(){
-    return PASSKEY;
+    return getDevicePasskey();
   }
 
   void onPassKeyNotify(uint32_t pass_key){}
@@ -351,7 +355,7 @@ void bleSecuritySetup(){
   uint8_t key_size = 16;
   uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
   uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
-  uint32_t passkey = PASSKEY;
+  uint32_t passkey = getDevicePasskey();
   uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
   esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
