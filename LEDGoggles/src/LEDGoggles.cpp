@@ -33,17 +33,17 @@ NeoPixelBus<NeoGrbFeature, NeoEsp32I2s1X8Ws2812xMethod> strip1(PIXEL_COUNT, PIXE
 
 uint8_t     mode     = 4;    // Currently-active animation mode, 0-5 (default: spinning wheels red)
 
-// BLE configuration (shared UUIDs across props)
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+// BLE configuration (unique per prop)
+#define SERVICE_UUID "09d2abea-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bf0-dc7b-44d2-8cfe-0e09f2ee6107"
 #define PASSKEY 123456
 
 BLEServer *pServer = nullptr;
 BLECharacteristic *pCharacteristic = nullptr;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-uint8_t bleCommand = 0;
-bool bleCommandPending = false;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
+volatile uint8_t bleCommand = 0;
+volatile bool bleCommandPending = false;
 uint8_t prevMode = 255;
 
 // BLE write callback — receives mode commands from armDisplay

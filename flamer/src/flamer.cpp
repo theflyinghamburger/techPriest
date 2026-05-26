@@ -6,9 +6,9 @@
 #include <BLE2902.h>
 #include <driver/ledc.h>
 
-// BLE UUIDs (shared across props)
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+// BLE UUIDs (unique per prop)
+#define SERVICE_UUID "09d2abe9-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bff-dc7b-44d2-8cfe-0e09f2ee6107"
 
 // LED configuration
 #define DATA_PIN 5
@@ -44,16 +44,16 @@ enum FlamerState {
 };
 
 // Global state
-static FlamerState gState = STATE_BOOT;
-static FlamerState gPrevState = STATE_BOOT;
+static volatile FlamerState gState = STATE_BOOT;
+static volatile FlamerState gPrevState = STATE_BOOT;
 
 // BLE
 static BLEServer *pServer = nullptr;
 static BLECharacteristic *pCharacteristic = nullptr;
-static bool deviceConnected = false;
-static bool oldDeviceConnected = false;
-static uint8_t bleCommand = 0;
-static bool bleCommandPending = false;
+static volatile bool deviceConnected = false;
+static volatile bool oldDeviceConnected = false;
+static volatile uint8_t bleCommand = 0;
+static volatile bool bleCommandPending = false;
 
 // Ramp state
 static unsigned long rampStartTime = 0;
