@@ -21,7 +21,7 @@ uint8_t breathBrightness = 100;
 
 // Button configuration
 #define BUTTON_PIN 6
-bool lastButtonState = HIGH;
+bool lastButtonState = LOW;
 unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 50;
 unsigned long buttonPressTime = 0;
@@ -30,11 +30,11 @@ BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
 BLEDescriptor *pDescr;
 BLE2902 *pBLE2902;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
 
-uint8_t gCurrentPatternNumber = 0;
-uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
+volatile uint8_t gCurrentPatternNumber = 0;
+volatile uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
 uint8_t overchargingTransitionStep = 0;
 int shootingStep = 0;
 unsigned long shootingLastTime = 0;
@@ -45,8 +45,12 @@ typedef void (*SimplePatternList[])();
 unsigned long previousMillis = 0;
 const long interval = 1000 / FRAMES_PER_SECOND;
 
-// PIN for BLE pairing
-#define PASSKEY 123456 // 6-digit PIN
+// PIN for BLE pairing - unique per device from MAC address
+uint32_t getDevicePasskey() {
+  uint8_t base_mac[6];
+  esp_read_mac(base_mac, ESP_MAC_WIFI_STA);
+  return (base_mac[3] << 16) | (base_mac[4] << 8) | base_mac[5];
+}
 
 // Function prototypes
 void idle();
@@ -118,7 +122,7 @@ SimplePatternList gPatterns = {idle, charging, overcharging, shooting};
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest(){
-    return PASSKEY;
+    return getDevicePasskey();
   }
 
   void onPassKeyNotify(uint32_t pass_key){}
@@ -146,14 +150,36 @@ class SecurityCallback : public BLESecurityCallbacks {
 };
 
 class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
+  void onConnect(BLEServer* pSrv) {
     deviceConnected = true;
     Serial.println("Device connected");
+    notifyPatternChange();
   }
 
-  void onDisconnect(BLEServer* pServer) {
+  void onDisconnect(BLEServer* pSrv) {
     deviceConnected = false;
     Serial.println("Device disconnected");
+  }
+};
+
+// BLE write callback — receives commands from armDisplay
+class PlasmaWriteCallback : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pChr) {
+    if (pChr->getLength() >= 1) {
+      uint8_t cmd = pChr->getData()[0];
+      if (cmd >= 0 && cmd <= 3) {
+        gCurrentPatternNumber = cmd;
+        if (cmd == 2) {
+          overchargingTransitionStep = 0;
+        }
+        if (cmd == 3) {
+          shootingStep = 0;
+          shootingLastTime = millis();
+        }
+        Serial.print("BLE command received - Pattern: ");
+        Serial.println(cmd);
+      }
+    }
   }
 };
 
@@ -166,7 +192,8 @@ void notifyPatternChange() {
     Serial.println(gCurrentPatternNumber);
     */
     intToPrint(gCurrentPatternNumber);
-    pCharacteristic->setValue(&gCurrentPatternNumber, 1);
+    uint8_t val = gCurrentPatternNumber;
+    pCharacteristic->setValue(&val, 1);
     pCharacteristic->notify();
     prev_gCurrentPatternNumber = gCurrentPatternNumber;
   }
@@ -197,6 +224,7 @@ void setup() {
   );
 
   pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  pCharacteristic->setCallbacks(new PlasmaWriteCallback());
 
   // Create descriptors for the characteristic
   pDescr = new BLEDescriptor((uint16_t)0x2901);
@@ -210,6 +238,12 @@ void setup() {
   // Start the service
   pService->start();
 
+  // Initialize FastLED
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(BRIGHTNESS);
+  fill_solid(leds, NUM_LEDS, CRGB::Black); // start up
+  startup();
+
   // Start advertising
   BLEAdvertising *pAdvertising = pServer->getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
@@ -222,13 +256,6 @@ void setup() {
 
   Serial.println("Waiting for a client connection to notify...");
   delay(100); // brief delay for BLE recovery
-
-  // Initialize FastLED
-  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
-  FastLED.setBrightness(BRIGHTNESS);
-  fill_solid(leds, NUM_LEDS, CRGB::Black); // start up
-  notifyPatternChange();
-  startup();
 }
 
 void loop() {
@@ -279,7 +306,9 @@ void loop() {
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     // Call the appropriate pattern function based on current state
-    gPatterns[gCurrentPatternNumber]();
+    if (gCurrentPatternNumber < 4) {
+      gPatterns[gCurrentPatternNumber]();
+    }
     FastLED.show();
 
     if (gCurrentPatternNumber == 3 && shootingStep >= NUM_LEDS) {
@@ -287,6 +316,7 @@ void loop() {
       FastLED.show();
       gCurrentPatternNumber = 0;
       Serial.println("Shooting complete - Returning to Idle");
+      notifyPatternChange();
     }
   }
 
@@ -328,7 +358,7 @@ void bleSecuritySetup(){
   uint8_t key_size = 16;
   uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
   uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
-  uint32_t passkey = PASSKEY;
+  uint32_t passkey = getDevicePasskey();
   uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
   esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));

@@ -33,17 +33,23 @@ NeoPixelBus<NeoGrbFeature, NeoEsp32I2s1X8Ws2812xMethod> strip1(PIXEL_COUNT, PIXE
 
 uint8_t     mode     = 4;    // Currently-active animation mode, 0-5 (default: spinning wheels red)
 
-// BLE configuration (shared UUIDs across props)
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
-#define PASSKEY 123456
+// BLE configuration (unique per prop)
+#define SERVICE_UUID "09d2abea-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bf0-dc7b-44d2-8cfe-0e09f2ee6107"
+
+// Unique passkey per device from MAC address
+uint32_t getDevicePasskey() {
+  uint8_t base_mac[6];
+  esp_read_mac(base_mac, ESP_MAC_WIFI_STA);
+  return (base_mac[3] << 16) | (base_mac[4] << 8) | base_mac[5];
+}
 
 BLEServer *pServer = nullptr;
 BLECharacteristic *pCharacteristic = nullptr;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-uint8_t bleCommand = 0;
-bool bleCommandPending = false;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
+volatile uint8_t bleCommand = 0;
+volatile bool bleCommandPending = false;
 uint8_t prevMode = 255;
 
 // BLE write callback — receives mode commands from armDisplay
@@ -60,7 +66,7 @@ class GogglesWriteCallback : public BLECharacteristicCallbacks {
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest() {
-    return PASSKEY;
+    return getDevicePasskey();
   }
   void onPassKeyNotify(uint32_t pass_key) {}
   bool onConfirmPIN(uint32_t pass_key) {
@@ -109,16 +115,16 @@ u_int32_t servoMilis = 0;
 u_int32_t posTimePrev = 0;
 u_int32_t joystickMilis = 0;
 // Initialize the filter output
-u_int16_t xfilteredOutput = 0;
-u_int16_t yfilteredOutput = 0;
+volatile u_int16_t xfilteredOutput = 0;
+volatile u_int16_t yfilteredOutput = 0;
 
 u_int16_t xSum = 0;
 u_int16_t ySum = 0;
 u_int16_t prevLEDCount = 0;
-u_int8_t ledState = 0;
+volatile u_int8_t ledState = 0;
 u_int8_t ledBounce = 0;
 u_int8_t offset = 0;
-u_int8_t pos = 0;
+volatile u_int8_t pos = 0;
 
 
 
@@ -131,13 +137,13 @@ void colorWipe(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait, bool 
 void spinningWheelsLED(u_int8_t red, u_int8_t green, u_int8_t blue, uint32_t wait);
 void clearLED();
 
-void avg_flt (u_int8_t channel, u_int8_t *index, u_int16_t *sensorReadings, u_int16_t *filteredOutput, u_int16_t *sum )
+void avg_flt (u_int8_t channel, u_int8_t *index, u_int16_t *sensorReadings, volatile u_int16_t *filteredOutput, u_int16_t *sum )
 {
   u_int16_t newReading = 0;
   // Get a new sensor reading
-  
+
   newReading = analogRead(channel);
-  
+
   // Add the new reading to the array
   *sum = *sum - sensorReadings[*index]; //remove oldest value from total
   sensorReadings[*index] = newReading;
@@ -314,7 +320,7 @@ void bleSecuritySetup()
   uint8_t key_size = 16;
   uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
   uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
-  uint32_t passkey = PASSKEY;
+  uint32_t passkey = getDevicePasskey();
   uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
   esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
@@ -367,24 +373,23 @@ void bleSetup()
 
 
 
-void armPos(u_int16_t * filteredADC, u_int32_t wait)
+void armPos(volatile u_int16_t * filteredADC, u_int32_t wait)
 {
   u_int32_t posTimeNow = millis();
-  if ((*filteredADC > 3500 || *filteredADC < 500 ) && (posTimeNow - posTimePrev >= wait))
+  u_int16_t adcVal = *filteredADC;
+  if ((adcVal > 3500 || adcVal < 500 ) && (posTimeNow - posTimePrev >= wait))
   {
     posTimePrev = posTimeNow;
-    if (*filteredADC > 3500)
+    if (adcVal > 3500)
     {
-      pos++;
-      if (pos > 180)
-        pos = 180;
+      if (pos < 180)
+        pos++;
     }
     else {
-        pos--;
-        if (pos <= 0)
-          pos = 0;
+        if (pos > 0)
+          pos--;
     }
-        
+
   }
 }
 // Define a callback function that will be called when the timer expires
