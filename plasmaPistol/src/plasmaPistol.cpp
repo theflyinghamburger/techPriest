@@ -30,11 +30,11 @@ BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
 BLEDescriptor *pDescr;
 BLE2902 *pBLE2902;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
 
-uint8_t gCurrentPatternNumber = 0;
-uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
+volatile uint8_t gCurrentPatternNumber = 0;
+volatile uint8_t prev_gCurrentPatternNumber = 255; // Initialized to a different value
 uint8_t overchargingTransitionStep = 0;
 int shootingStep = 0;
 unsigned long shootingLastTime = 0;
@@ -187,7 +187,8 @@ void notifyPatternChange() {
     Serial.println(gCurrentPatternNumber);
     */
     intToPrint(gCurrentPatternNumber);
-    pCharacteristic->setValue(&gCurrentPatternNumber, 1);
+    uint8_t val = gCurrentPatternNumber;
+    pCharacteristic->setValue(&val, 1);
     pCharacteristic->notify();
     prev_gCurrentPatternNumber = gCurrentPatternNumber;
   }

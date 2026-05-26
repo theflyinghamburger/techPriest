@@ -30,9 +30,9 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-uint8_t gCurrentState = 0;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
+volatile uint8_t gCurrentState = 0;
 uint8_t prev_gCurrentState = 255;
 
 // Neopixel eye configuration
@@ -104,7 +104,8 @@ void notifyStateChange() {
     Serial.print(prev_gCurrentState);
     Serial.print(" to ");
     Serial.println(gCurrentState);
-    pCharacteristic->setValue(&gCurrentState, 1);
+    uint8_t val = gCurrentState;
+    pCharacteristic->setValue(&val, 1);
     pCharacteristic->notify();
     prev_gCurrentState = gCurrentState;
   }
