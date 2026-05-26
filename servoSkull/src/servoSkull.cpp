@@ -23,16 +23,22 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 //#error("Height incorrect, please fix Adafruit_SSD1306.h!");
 //#endif
 
-// BLE configuration
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
-#define PASSKEY 123456
+// BLE configuration (unique per prop)
+#define SERVICE_UUID "09d2abeb-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bf1-dc7b-44d2-8cfe-0e09f2ee6107"
+
+// Unique passkey per device from MAC address
+uint32_t getDevicePasskey() {
+  uint8_t base_mac[6];
+  esp_read_mac(base_mac, ESP_MAC_WIFI_STA);
+  return (base_mac[3] << 16) | (base_mac[4] << 8) | base_mac[5];
+}
 
 BLEServer *pServer;
 BLECharacteristic *pCharacteristic;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-uint8_t gCurrentState = 0;
+volatile bool deviceConnected = false;
+volatile bool oldDeviceConnected = false;
+volatile uint8_t gCurrentState = 0;
 uint8_t prev_gCurrentState = 255;
 
 // Neopixel eye configuration
@@ -44,7 +50,7 @@ CRGB eyeLed[NUM_EYE_LEDS];
 
 class SecurityCallback : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest(){
-    return PASSKEY;
+    return getDevicePasskey();
   }
   void onPassKeyNotify(uint32_t pass_key){}
   bool onConfirmPIN(uint32_t pass_key){
@@ -104,7 +110,8 @@ void notifyStateChange() {
     Serial.print(prev_gCurrentState);
     Serial.print(" to ");
     Serial.println(gCurrentState);
-    pCharacteristic->setValue(&gCurrentState, 1);
+    uint8_t val = gCurrentState;
+    pCharacteristic->setValue(&val, 1);
     pCharacteristic->notify();
     prev_gCurrentState = gCurrentState;
   }
@@ -116,7 +123,7 @@ void bleSecuritySetup(){
   uint8_t key_size = 16;
   uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
   uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
-  uint32_t passkey = PASSKEY;
+  uint32_t passkey = getDevicePasskey();
   uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
   esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
