@@ -6,9 +6,9 @@
 #include <BLE2902.h>
 #include <driver/ledc.h>
 
-// BLE UUIDs (shared across props)
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+// BLE UUIDs (unique per prop)
+#define SERVICE_UUID "09d2abe9-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bff-dc7b-44d2-8cfe-0e09f2ee6107"
 
 // LED configuration
 #define DATA_PIN 5

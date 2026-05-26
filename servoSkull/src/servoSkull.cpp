@@ -23,9 +23,9 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 //#error("Height incorrect, please fix Adafruit_SSD1306.h!");
 //#endif
 
-// BLE configuration
-#define SERVICE_UUID "09d2abe8-30ec-4519-86ff-ba0cbaf79160"
-#define CHARACTERISTIC_UUID "102d8bfe-dc7b-44d2-8cfe-0e09f2ee6107"
+// BLE configuration (unique per prop)
+#define SERVICE_UUID "09d2abeb-30ec-4519-86ff-ba0cbaf79160"
+#define CHARACTERISTIC_UUID "102d8bf1-dc7b-44d2-8cfe-0e09f2ee6107"
 #define PASSKEY 123456
 
 BLEServer *pServer;
